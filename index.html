@@ -692,17 +692,25 @@ document.getElementById('settings').addEventListener('click',e=>{
 document.getElementById('readmeBtn').addEventListener('click',async()=>{
   document.getElementById('readmeWin').classList.add('open');
   const t=document.getElementById('readmeText');
-  if(!t.dataset.loaded){
+  if(t.dataset.loaded)return;
+  /* try alongside the file first, then the published copies on GitHub —
+     covers Claude artifacts and anywhere index.html travels alone */
+  const sources=[
+    'README.md',
+    'https://novaspivack.github.io/neon_infinity_game/README.md',
+    'https://raw.githubusercontent.com/novaspivack/neon_infinity_game/main/README.md',
+  ];
+  const errs=[];
+  for(const url of sources){
     try{
-      const res=await fetch('README.md');
+      const res=await fetch(url);
       if(!res.ok)throw new Error('HTTP '+res.status);
       t.textContent=await res.text();t.dataset.loaded='1';
-    }catch(e){
-      t.textContent='README.md could not be loaded ('+(e.message||e)+').\n\n'+
-        'Browsers block fetching local files from a file:// page — serve the folder\n'+
-        '(python3 -m http.server) or open README.md in the repo directly.';
-    }
+      return;
+    }catch(e){errs.push((url.split('/')[2]||'local')+': '+(e.message||e));}
   }
+  t.textContent='README could not be loaded from any source:\n  '+errs.join('\n  ')+
+    '\n\nRead it directly at:\nhttps://github.com/novaspivack/neon_infinity_game';
 });
 document.getElementById('readmeClose').addEventListener('click',()=>
   document.getElementById('readmeWin').classList.remove('open'));
@@ -1932,8 +1940,10 @@ function applyGenerated(good,seed){
     if((crowd>=26||weak)&&!OFFENSE_RE.test(fx.label)&&r()<0.7)fx=pick(r,FX_GOOD)(r);
     /* LUCK SURGE: half of good rolls become FORTUNE FIELD */
     if(time<(player.luckBiasUntil||0)&&r()<0.5)fx=FX_FORTUNE(r);
-    /* luck begets luck: held stacks pull more fortune from generic rolls */
-    else if(player.luck>0&&!fx.label.includes('FORTUNE')&&r()<0.1*player.luck)
+    /* luck begets luck: held stacks pull more fortune from generic
+       rolls, capped so the tree tops out instead of exploding */
+    else if(player.luck>0&&player.luck<4&&!fx.label.includes('FORTUNE')
+      &&r()<Math.min(0.22,0.1*player.luck))
       fx=FX_FORTUNE(r);
   }
   fx.on();
@@ -1993,16 +2003,21 @@ function spawnDrop(x,y,forceType){
     if(time<world.glitchUntil){type='mystery';}
     else{const t=r();
       type=t<0.03?'prize':t<0.52?'good':t<0.66?'bad':t<0.82?'mystery':t<0.93?'gem':'cache';
-      /* FORTUNE FIELD stacks tilt fate: curses flip, gems become caches */
-      const L=player.luck||0;
+      /* FORTUNE FIELD stacks tilt fate: curses flip, gems become caches.
+         Effective luck SELF-LIMITS at 3 stacks, and prize conversions
+         carry a cooldown — a lucky streak, not a permanent star rain */
+      const L=Math.min(3,player.luck||0);
       if(L>0){
         if(type==='bad'&&r()<L*0.35)type='good';
         if(type==='gem'&&r()<L*0.25)type='cache';
-        if(type==='good'&&r()<L*0.05)type='prize';
+        if(type==='good'&&r()<Math.min(0.1,L*0.04)&&time>(world.luckPrizeCd||0)){
+          type='prize';world.luckPrizeCd=time+15;
+        }
       }
       /* 🍀 luck is a tech tree: clover drops appear on their own, and
-         each held FORTUNE stack makes the next clover MORE likely */
-      if(type==='good'&&r()<0.08*(1+L*0.8))type='lucky';
+         each held FORTUNE stack makes the next clover more likely —
+         but the chain caps out so it can't run away */
+      if(type==='good'&&r()<Math.min(0.18,0.08*(1+L*0.5)))type='lucky';
     }
   }
   const prize=type==='prize';
@@ -2398,7 +2413,7 @@ function killEnemy(e,silentDrops){
     }else{
       /* world.lootMul is the AI pacing hand on the economy (P7); FORTUNE
          FIELD luck stacks multiply on top */
-      let chance=(e.elite?1:(isPrime(wave)?0.3:0.15))*(world.lootMul||1)*(1+(player.luck||0)*0.5)*(time<world.famineUntil?0.25:1);
+      let chance=(e.elite?1:(isPrime(wave)?0.3:0.15))*(world.lootMul||1)*(1+Math.min(3,player.luck||0)*0.35)*(time<world.famineUntil?0.25:1);
       if(uRng()<chance)spawnDrop(e.x,e.y,e.elite?'cache':undefined);
     }
   }
@@ -4325,7 +4340,7 @@ function update(dt){
   if(time>supplyTimer){
     /* supplies come faster when the screen is crowded */
     const crowded=enemies.reduce((a,e)=>a+((!e.dead&&!e.goldRun&&!e.ufo&&!e.nullh)?1:0),0)>=16;
-    supplyTimer=time+rr(uRng,9,16)/(world.lootMul||1)/(1+(player.luck||0)*0.3)*(crowded?0.8:1);
+    supplyTimer=time+rr(uRng,9,16)/(world.lootMul||1)/(1+Math.min(3,player.luck||0)*0.25)*(crowded?0.8:1);
     /* famine curse chokes the supply line */
     if(time<world.famineUntil&&uRng()<0.7){/* skipped shipment */}
     else{
