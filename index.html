@@ -1895,19 +1895,22 @@ function spawnSceneryMajor(onScreen){
   const r=scnR;
   const kind=pick(r,['planetFar','planetFar','planetNear','nebula','nebula','galaxy','system','cluster']);
   const o={kind,major:true,t0:time,back:false,alpha:1};
-  if(kind==='planetFar'){o.R=rr(r,10,26);o.img=planetSprite(r,o.R,false);o.vy=rr(r,4,8);o.alpha=0.85;}
-  else if(kind==='planetNear'){o.R=rr(r,55,135);o.img=planetSprite(r,o.R,true);o.vy=rr(r,9,17);o.alpha=0.72;}
-  else if(kind==='nebula'){o.R=rr(r,170,330);o.img=nebulaSprite(r,o.R);o.vy=rr(r,6,11);o.back=true;}
-  else if(kind==='galaxy'){o.R=rr(r,55,125);o.img=galaxySprite(r,o.R);o.vy=rr(r,4,8);o.back=true;o.alpha=0.8;}
+  /* o.par = parallax depth: how much this object slides against your
+     motion. Whole layers share a factor, so everything at one depth
+     drifts in formation — near planets sweep past, nebulae barely creep */
+  if(kind==='planetFar'){o.R=rr(r,10,26);o.img=planetSprite(r,o.R,false);o.vy=rr(r,4,8);o.alpha=0.85;o.par=0.05;}
+  else if(kind==='planetNear'){o.R=rr(r,55,135);o.img=planetSprite(r,o.R,true);o.vy=rr(r,9,17);o.alpha=0.72;o.par=0.16;}
+  else if(kind==='nebula'){o.R=rr(r,170,330);o.img=nebulaSprite(r,o.R);o.vy=rr(r,6,11);o.back=true;o.par=0.02;}
+  else if(kind==='galaxy'){o.R=rr(r,55,125);o.img=galaxySprite(r,o.R);o.vy=rr(r,4,8);o.back=true;o.alpha=0.8;o.par=0.03;}
   else if(kind==='system'){
-    o.R=rr(r,60,130);o.vy=rr(r,5,9);o.alpha=0.9;
+    o.R=rr(r,60,130);o.vy=rr(r,5,9);o.alpha=0.9;o.par=0.08;
     o.sunHue=pick(r,[45,35,18,200,0]);o.sunR=rr(r,4,9);
     const n=2+(r()*3|0);o.orbits=[];
     for(let i=0;i<n;i++)o.orbits.push({d:o.R*(0.3+0.7*(i+1)/n),sp:rr(r,0.12,0.5)*(r()<0.5?-1:1),
       ph:r()*TAU,sz:rr(r,1.2,3),h:(USTYLE.bgHue+rr(r,-60,100)+360)%360,sq:rr(r,0.3,0.5)});
   }
   else{ /* star cluster */
-    o.R=rr(r,40,90);o.vy=rr(r,4,8);o.back=true;o.pts=[];
+    o.R=rr(r,40,90);o.vy=rr(r,4,8);o.back=true;o.par=0.04;o.pts=[];
     const n=10+(r()*12|0);
     for(let i=0;i<n;i++){const a=r()*TAU,d=Math.sqrt(r())*o.R;
       o.pts.push({x:Math.cos(a)*d,y:Math.sin(a)*d,sz:rr(r,0.8,2),
@@ -1939,10 +1942,20 @@ function spawnComet(){
 function sceneryReset(){
   scenery=[];scnR=mulberry32((universeSeed^0x5CE9E1)>>>0);
   scnNext={major:time+rr(scnR,10,24),shoot:time+rr(scnR,2,6),comet:time+rr(scnR,10,25)};
+  scnCam.x=null;
   /* seed the sky so a fresh universe isn't empty */
   spawnSceneryMajor(true);spawnSceneryMajor(true);
 }
+/* parallax camera: eased toward the ship so the whole sky leans away
+   from your motion smoothly (a dash nudges it, never snaps it) */
+const scnCam={x:null,y:null};
+let scnLastT=0;
 function updateScenery(){
+  const cdt=Math.max(0,Math.min(0.1,time-scnLastT));scnLastT=time;
+  if(scnCam.x==null){scnCam.x=player.x||W/2;scnCam.y=player.y||H*0.72;}
+  const k=Math.min(1,cdt*3.5);
+  scnCam.x+=(player.x-scnCam.x)*k;
+  scnCam.y+=(player.y-scnCam.y)*k;
   if(time>=scnNext.shoot){spawnShootingStar();scnNext.shoot=time+rr(scnR,2.5,9);}
   if(time>=scnNext.comet){spawnComet();scnNext.comet=time+rr(scnR,14,34);}
   if(time>=scnNext.major){
@@ -1955,7 +1968,7 @@ function updateScenery(){
     else if(o.kind==='comet'){
       const x=o.x0+o.vx*T;
       if(T>o.dur+3||x<-260||x>W+260)scenery.splice(i,1);
-    }else if(o.y0+o.vy*T-o.R>H+60)scenery.splice(i,1);
+    }else if(o.y0+o.vy*T-o.R>H+200)scenery.splice(i,1);
   }
 }
 function drawScenery(backLayer){
@@ -1994,7 +2007,10 @@ function drawScenery(backLayer){
       continue;
     }
     if(o.back!==backLayer)continue;
-    const x=o.x+o.vx*T,y=o.y0+o.vy*T;
+    /* parallax: the layer slides against your motion, scaled by depth */
+    const par=o.par||0;
+    const x=o.x+o.vx*T+(W/2-scnCam.x)*par,
+          y=o.y0+o.vy*T+(H*0.72-scnCam.y)*par;
     ctx.globalAlpha=o.alpha*Math.min(1,T*0.5+0.6);
     if(o.img)ctx.drawImage(o.img,x-o.img.width/2,y-o.img.height/2);
     else if(o.kind==='system'){
@@ -5354,10 +5370,15 @@ function drawBackground(){
   updateScenery();
   drawScenery(true); /* nebulae, galaxies, clusters — behind the starfield */
   for(const s of stars){
-    const y=(s.y*H+time*40*s.z)%H;
+    /* stars get depth-scaled parallax too — the whole field leans away
+       from your motion, deeper stars less than close ones */
+    const spx=(W/2-(scnCam.x==null?W/2:scnCam.x))*0.05*s.z,
+          spy=(H*0.72-(scnCam.y==null?H*0.72:scnCam.y))*0.05*s.z;
+    const x=((s.x*W+spx)%W+W)%W;
+    const y=((s.y*H+time*40*s.z+spy)%H+H)%H;
     ctx.globalAlpha=0.3+0.7*s.z;
     ctx.fillStyle=`hsl(${s.h} 80% ${60+s.z*30}%)`;
-    ctx.fillRect(s.x*W,y,s.z*2,s.z*(world.ts<1?7:2));
+    ctx.fillRect(x,y,s.z*2,s.z*(world.ts<1?7:2));
   }
   ctx.globalAlpha=1;
   drawScenery(false); /* planets, systems, streaks — in front of the stars */
