@@ -1063,6 +1063,19 @@ const AID={
     return `You are the live AI Director of "NEON ∞", a generative neon arcade space shooter. You are directing wave ${forWave}, which starts in a few seconds. Current run state:\n${st}\n\nRelic stats (mul stats multiply the player stat, add stats add; out-of-range values are clamped): ${Object.keys(RELIC_STATS).join(', ')}.\n\nRespond with ONLY one JSON object, no markdown fences, matching this schema (every field except codename and taunt is optional — include what serves the moment):\n${spec}\n\nBe funny and in-universe. Use your memory field for grudges and running jokes. Counter the player's build via waveBias and admit it in "reason". Values outside stated ranges are clamped, so aim inside them.`;
   },
   async call(promptText,maxTokens){
+    /* transport 1: Claude artifact runtime hook (claude.ai preview pane) */
+    if(typeof window!=='undefined'&&window.claude&&typeof window.claude.complete==='function'){
+      const txt=await window.claude.complete(promptText);
+      return String(txt).replace(/```json|```/g,'').trim();
+    }
+    /* transport 2: generic host AI hook — any embedding environment
+       (e.g. a ChatGPT canvas) can expose window.aiComplete(prompt) →
+       string and the Director will use it automatically */
+    if(typeof window!=='undefined'&&typeof window.aiComplete==='function'){
+      const txt=await window.aiComplete(promptText);
+      return String(txt).replace(/```json|```/g,'').trim();
+    }
+    /* transport 3: direct Anthropic API (keyless inside Claude, BYOK anywhere) */
     const headers={'Content-Type':'application/json'};
     if(this.key){
       headers['x-api-key']=this.key;
