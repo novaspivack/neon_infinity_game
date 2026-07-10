@@ -1898,19 +1898,19 @@ function spawnSceneryMajor(onScreen){
   /* o.par = parallax depth: how much this object slides against your
      motion. Whole layers share a factor, so everything at one depth
      drifts in formation — near planets sweep past, nebulae barely creep */
-  if(kind==='planetFar'){o.R=rr(r,10,26);o.img=planetSprite(r,o.R,false);o.vy=rr(r,4,8);o.alpha=0.85;o.par=0.05;}
-  else if(kind==='planetNear'){o.R=rr(r,55,135);o.img=planetSprite(r,o.R,true);o.vy=rr(r,9,17);o.alpha=0.72;o.par=0.16;}
-  else if(kind==='nebula'){o.R=rr(r,170,330);o.img=nebulaSprite(r,o.R);o.vy=rr(r,6,11);o.back=true;o.par=0.02;}
-  else if(kind==='galaxy'){o.R=rr(r,55,125);o.img=galaxySprite(r,o.R);o.vy=rr(r,4,8);o.back=true;o.alpha=0.8;o.par=0.03;}
+  if(kind==='planetFar'){o.R=rr(r,10,26);o.img=planetSprite(r,o.R,false);o.vy=rr(r,4,8);o.alpha=0.85;o.par=0.02;}
+  else if(kind==='planetNear'){o.R=rr(r,55,135);o.img=planetSprite(r,o.R,true);o.vy=rr(r,9,17);o.alpha=0.72;o.par=0.06;}
+  else if(kind==='nebula'){o.R=rr(r,170,330);o.img=nebulaSprite(r,o.R);o.vy=rr(r,6,11);o.back=true;o.par=0.008;}
+  else if(kind==='galaxy'){o.R=rr(r,55,125);o.img=galaxySprite(r,o.R);o.vy=rr(r,4,8);o.back=true;o.alpha=0.8;o.par=0.012;}
   else if(kind==='system'){
-    o.R=rr(r,60,130);o.vy=rr(r,5,9);o.alpha=0.9;o.par=0.08;
+    o.R=rr(r,60,130);o.vy=rr(r,5,9);o.alpha=0.9;o.par=0.035;
     o.sunHue=pick(r,[45,35,18,200,0]);o.sunR=rr(r,4,9);
     const n=2+(r()*3|0);o.orbits=[];
     for(let i=0;i<n;i++)o.orbits.push({d:o.R*(0.3+0.7*(i+1)/n),sp:rr(r,0.12,0.5)*(r()<0.5?-1:1),
       ph:r()*TAU,sz:rr(r,1.2,3),h:(USTYLE.bgHue+rr(r,-60,100)+360)%360,sq:rr(r,0.3,0.5)});
   }
   else{ /* star cluster */
-    o.R=rr(r,40,90);o.vy=rr(r,4,8);o.back=true;o.par=0.04;o.pts=[];
+    o.R=rr(r,40,90);o.vy=rr(r,4,8);o.back=true;o.par=0.015;o.pts=[];
     const n=10+(r()*12|0);
     for(let i=0;i<n;i++){const a=r()*TAU,d=Math.sqrt(r())*o.R;
       o.pts.push({x:Math.cos(a)*d,y:Math.sin(a)*d,sz:rr(r,0.8,2),
@@ -1953,7 +1953,9 @@ let scnLastT=0;
 function updateScenery(){
   const cdt=Math.max(0,Math.min(0.1,time-scnLastT));scnLastT=time;
   if(scnCam.x==null){scnCam.x=player.x||W/2;scnCam.y=player.y||H*0.72;}
-  const k=Math.min(1,cdt*3.5);
+  /* slow easing acts as a low-pass filter: darting and dodging barely
+     move the sky, only sustained travel does — no planet wobble */
+  const k=Math.min(1,cdt*1.1);
   scnCam.x+=(player.x-scnCam.x)*k;
   scnCam.y+=(player.y-scnCam.y)*k;
   if(time>=scnNext.shoot){spawnShootingStar();scnNext.shoot=time+rr(scnR,2.5,9);}
@@ -5372,8 +5374,8 @@ function drawBackground(){
   for(const s of stars){
     /* stars get depth-scaled parallax too — the whole field leans away
        from your motion, deeper stars less than close ones */
-    const spx=(W/2-(scnCam.x==null?W/2:scnCam.x))*0.05*s.z,
-          spy=(H*0.72-(scnCam.y==null?H*0.72:scnCam.y))*0.05*s.z;
+    const spx=(W/2-(scnCam.x==null?W/2:scnCam.x))*0.018*s.z,
+          spy=(H*0.72-(scnCam.y==null?H*0.72:scnCam.y))*0.018*s.z;
     const x=((s.x*W+spx)%W+W)%W;
     const y=((s.y*H+time*40*s.z+spy)%H+H)%H;
     ctx.globalAlpha=0.3+0.7*s.z;
