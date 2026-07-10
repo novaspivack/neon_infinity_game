@@ -90,8 +90,8 @@
     &nbsp; 🔫 <input type="range" id="sfxVolS" min="0" max="100" value="70" style="width:120px;pointer-events:auto;accent-color:var(--ui2);vertical-align:middle"></div>
   <div class="row"><div class="lbl">AI DIRECTOR — API KEY (for play outside Claude) · Anthropic sk-ant-… → Claude · OpenAI sk-… → GPT</div>
     <button id="keyBtn">⚿ SET KEY</button> <span id="keyState" style="font-size:10px;opacity:.8"></span>
-    <div class="note">Stored only in this browser's localStorage; sent only to api.anthropic.com.
-      Anyone with access to this browser profile can read it — use a key you can revoke.</div></div>
+    <div class="note">Stored only in this browser's localStorage; sent only to the key's own provider
+      (api.anthropic.com or api.openai.com). Anyone with access to this browser profile can read it — use a key you can revoke.</div></div>
   <div class="row"><button id="readmeBtn">📖 README</button> <button id="setClose">✕ CLOSE</button></div>
 </div></div>
 <div id="readmeWin"><div id="readmePanel">
@@ -719,10 +719,12 @@ document.getElementById('readmeWin').addEventListener('click',e=>{
 
 /* ============================================================
    AI DIRECTOR — optional live model
-   Works with no key inside Claude's artifact environment; anywhere
-   else (local file, Cursor, hosted) supply your own Anthropic API
-   key via the ⚿ KEY button (BYOK — stored in localStorage only,
-   sent only to api.anthropic.com with the CORS opt-in header).
+   Works with no key inside Claude's artifact environment (or any host
+   exposing window.aiComplete); anywhere else (local file, Cursor,
+   hosted) supply your own key via the ⚿ KEY button — sk-ant-… runs the
+   Director on Claude, sk-… on GPT (BYOK — stored in localStorage only,
+   sent only to that key's provider; Anthropic calls use the CORS
+   opt-in header).
    ============================================================ */
 /* ---------- enum + clamp tables (single source of truth for both the
    prompt contract and the Airlock validators — EPIC_001_AD1 §3.2) ---------- */

@@ -3,7 +3,7 @@
 **Created by [Nova Spivack](https://www.novaspivack.com)** · [www.novaspivack.com](https://www.novaspivack.com) · CC BY-NC 4.0
 **GitHub:** [github.com/novaspivack/neon_infinity_game](https://github.com/novaspivack/neon_infinity_game)
 
-A neon-cyber arcade shooter where **nothing is authored and everything is generated**. Every ship hull, enemy behavior, weapon, powerup, faction, background sky, sound effect, and song is derived from a single universe seed. Change the seed, change reality. With the optional **AI Director** enabled, a live Claude model directs every wave — enemies, bosses, powerups, music, and taunts composed against your specific run in real time.
+A neon-cyber arcade shooter where **nothing is authored and everything is generated**. Every ship hull, enemy behavior, weapon, powerup, faction, background sky, sound effect, and song is derived from a single universe seed. Change the seed, change reality. With the optional **AI Director** enabled, a live frontier model — **Claude or GPT**, your pick — directs every wave: enemies, bosses, powerups, music, and taunts composed against your specific run in real time.
 
 One file. No dependencies. No build step. No server.
 
@@ -51,7 +51,7 @@ That's it. The file is fully self-contained. To iterate on the code: edit the fi
 
 > Note: simply uploading the file lets Claude *read* it, but it won't be playable until Claude presents it as an artifact. If you've only changed a small section of code, pasting just the diff and asking Claude to patch the current version is faster than re-uploading the whole file.
 
-**Why bother playing inside Claude?** The ✦ AI Director (see below) only works there. Everything else is identical in a local browser.
+**Why bother playing inside Claude?** It's the only place the ✦ AI Director works **with no API key at all** — Claude's artifact runtime gives the game a free line to the model. Everywhere else the Director needs a key (Anthropic or OpenAI) from ⚙ settings; everything else about the game is identical in a local browser.
 
 ### Porting
 - **Mac app:** wrap the file with [Tauri](https://tauri.app) or Electron — zero code changes.
@@ -148,7 +148,7 @@ The powerup pool now spans ~75 gifts and ~20 curses — including gift-class rar
 
 ## ✦ AI Director — The AI System
 
-It turns each wave of the game over to a live Claude model as a kind of dungeon master. Once per wave, the game sends the model a snapshot of your run — your build, shield trend, what's been killing you, an event log — and gets back one JSON "wave packet" that gets folded into the game's own generative systems. Concretely, that packet drives:
+It turns each wave of the game over to a live frontier model — Claude or GPT — as a kind of dungeon master. Once per wave, the game sends the model a snapshot of your run — your build, shield trend, what's been killing you, an event log — and gets back one JSON "wave packet" that gets folded into the game's own generative systems. Concretely, that packet drives:
 
 **Wave direction.** The Director looks at your loadout and deliberately biases enemy fire modes, traits, formations, and entry patterns *against* it — and admits what it's doing in the wave banner. There's also a persistent memory field round-tripped every wave, so factions remember what you did to them and escalate accordingly.
 
@@ -168,11 +168,15 @@ So without it you get a fully deterministic seeded roguelike; with it, the same 
 3. Play — packets are prefetched a wave ahead, so content applies with zero frame hitches.
 
 *Anywhere else (bring your own key — Anthropic or OpenAI):*
-1. Open **`⚙` settings** (bottom-right) and paste a key via **`⚿ SET KEY`**: an [Anthropic key](https://console.anthropic.com/) (`sk-ant-…`) makes **Claude** the Director; an [OpenAI key](https://platform.openai.com/) (`sk-…`) makes **GPT** the Director. The key prefix picks the provider automatically.
+1. Open **`⚙` settings** (bottom-right) and paste a key via **`⚿ SET KEY`**: an [Anthropic key](https://console.anthropic.com/) (`sk-ant-…`) makes **Claude** the Director; an [OpenAI key](https://platform.openai.com/) (`sk-…`) makes **GPT** the Director. The key prefix picks the provider automatically — no other configuration.
 2. Toggle **`✦AI ON`** and play — works from a local file, a hosted copy, or the Cursor browser.
 3. To remove the key, click the key button again and submit an empty field.
 
-> **Key security:** the key is stored in your browser's `localStorage` for this page and sent only to `api.anthropic.com` (using Anthropic's official [browser-access CORS header](https://simonwillison.net/2024/Aug/23/anthropic-dangerous-direct-browser-access/)). Anyone with access to your browser profile or devtools can read it, so use a key you can revoke, and don't add a key on a shared machine. Never ship a hosted copy with a key baked in.
+*Embedded in another AI host:* if the surrounding environment exposes `window.aiComplete(prompt) → string` to the page (the generic host hook, e.g. a ChatGPT canvas could provide this), the Director uses it automatically — no key needed there either. The full transport order is: Claude artifact hook → generic host hook → your key's provider.
+
+> **Key security:** the key is stored in your browser's `localStorage` for this page and sent only to that key's provider — `api.anthropic.com` for `sk-ant-…` keys (using Anthropic's official [browser-access CORS header](https://simonwillison.net/2024/Aug/23/anthropic-dangerous-direct-browser-access/)) or `api.openai.com` for `sk-…` keys. Anyone with access to your browser profile or devtools can read it, so use a key you can revoke, and don't add a key on a shared machine. Never ship a hosted copy with a key baked in.
+
+**Two Directors, two personalities.** The wave packet schema is identical either way — same airlock, same clamps, same budgets — but the *author* changes, and it shows. Claude and GPT make genuinely different creative choices inside the same constraints: different naming instincts for relics and bosses, different senses of humor in taunts and eulogies, different musical taste in the per-wave compositions, even different tactical reads on how to counter your build. Playing the same universe under each Director is a nice side-by-side of two frontier models doing the same creative job. (Current models: Claude Sonnet 4.6 via Anthropic, GPT-5 mini via OpenAI.)
 
 **Behavior notes:**
 - Without a key outside Claude, the chip reads `✦AI SEED` and the game runs entirely on its seeded generators — no errors, no lag. With a key, real failures (bad key, no credit, network) surface the API's error message in-game and flip the chip to `ERR`.
@@ -227,7 +231,7 @@ The seed (bottom-right) determines *everything*: background style (nebula / come
   - **Adaptive particle quality** — the game tracks its own frame time and scales explosion particle counts, lifetimes, and the particle budget down under load, recovering automatically.
   - **Balance pass** — advanced weapons trimmed ~20–35% (railgun 3×→2×, laser tick 0.1s→0.14s, wave cannon 1.2×→1×, scatter 0.7×→0.6×, machine gun 0.6×→0.5×), weapon pickups last 8–13s, prize-star weapon grant 30s→20s, prize-star permanent PWR bonus +0.4→+0.25, stacked damage amps cap at ×3.
   - **BYOK AI Director** — the AI Director runs outside Claude with your own Anthropic API key (stored in `localStorage`); keyed request failures surface an in-game error banner.
-- **v5** (this repo, in `index.html`) — **The Director update** (EPIC_001_AD1): the AI Director becomes a per-wave gameplay layer — wave packets, validation airlock, AI relics, counter-build wave direction, faction memory, generated bosses with phase scripts, live aesthetic/music direction, five set-piece templates, loot pacing, and run-specific death eulogies. Plus: **⚙ settings panel** with a four-level **difficulty** selector (enemy/boss hull ×1.3 to ×4.5, persisted), enemy and boss HP rescaled (steeper wave curve, scales with prize-star power, 25% turret gate), fire-rate/volley caps (×2.5 rate, 8 streams, 220-bullet budget), MEGA SHOT bullets decay back to base size in ~1s, the path-clearing laser array is capped at 9 seconds from any source, the effects HUD shows only the 5 newest effects, and the soundtrack is a 16-step electronica engine that mutates every wave with AI-composed drum/bass/arp overlays. Later balance/variety pass: bosses 20% quicker to kill, graded hit damage (24 weapon / 32 mine / 40 meteor / 55 enemy hull / 60 boss), new enemy **hook** and **chaser** rounds that don't fly straight, new **PHOTON LANCE** (piercing rocket) and **SWERVE ROCKET** player ordnance, and full-screen player movement.
+- **v5** (this repo, in `index.html`) — **The Director update** (EPIC_001_AD1): the AI Director becomes a per-wave gameplay layer — wave packets, validation airlock, AI relics, counter-build wave direction, faction memory, generated bosses with phase scripts, live aesthetic/music direction, five set-piece templates, loot pacing, and run-specific death eulogies. Plus: **⚙ settings panel** with a four-level **difficulty** selector (enemy/boss hull ×1.3 to ×4.5, persisted), enemy and boss HP rescaled (steeper wave curve, scales with prize-star power, 25% turret gate), fire-rate/volley caps (×2.5 rate, 8 streams, 220-bullet budget), MEGA SHOT bullets decay back to base size in ~1s, the path-clearing laser array is capped at 9 seconds from any source, the effects HUD shows only the 5 newest effects, and the soundtrack is a 16-step electronica engine that mutates every wave with AI-composed drum/bass/arp overlays. Later balance/variety pass: bosses 20% quicker to kill, graded hit damage (24 weapon / 32 mine / 40 meteor / 55 enemy hull / 60 boss), new enemy **hook** and **chaser** rounds that don't fly straight, new **PHOTON LANCE** (piercing rocket) and **SWERVE ROCKET** player ordnance, and full-screen player movement. BYOK now also accepts **OpenAI keys** — an `sk-…` key runs the Director on GPT instead of Claude (same packet schema and airlock, noticeably different personality), and a generic `window.aiComplete` host hook lets any embedding environment power the Director keylessly.
 
 Built with vanilla HTML5 Canvas + Web Audio. Everything in one file, on purpose.
 
