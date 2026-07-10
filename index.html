@@ -52,7 +52,25 @@
   #setPanel button:hover{background:#ffffff14;}
   #setPanel button.sel{background:var(--ui2);color:#050214;text-shadow:none;box-shadow:0 0 14px var(--ui2);}
   #setPanel .note{font-size:9px;opacity:.55;line-height:1.5;margin-top:4px;}
-  #readmeWin{position:fixed;inset:0;z-index:21;display:none;align-items:center;justify-content:center;
+  #keyWin{position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;
+    background:rgba(2,0,14,0.85);pointer-events:auto;}
+  #keyWin.open{display:flex;}
+  #keyPanel{min-width:320px;max-width:460px;border:1px solid var(--ui2);padding:18px 22px;
+    background:#050214;color:var(--ui2);font-size:12px;letter-spacing:1px;
+    box-shadow:0 0 30px var(--ui2),0 0 14px inset;text-shadow:0 0 8px var(--ui2);}
+  #keyPanel h2{margin:0 0 10px;font-size:14px;letter-spacing:3px;color:var(--ui);}
+  #keyPanel .row{margin:12px 0;}
+  #keyPanel button{background:transparent;border:1px solid var(--ui2);color:var(--ui2);cursor:pointer;
+    font-family:inherit;font-size:11px;letter-spacing:2px;padding:4px 9px;margin:2px 4px 2px 0;
+    text-shadow:0 0 8px var(--ui2);}
+  #keyPanel button:hover{background:#ffffff14;}
+  #keyPanel button:disabled{opacity:.4;cursor:default;}
+  #keyPanel .note{font-size:9px;opacity:.55;line-height:1.5;margin-top:4px;}
+  #keyIntro{font-size:11px;opacity:.85;line-height:1.6;text-transform:none;letter-spacing:.5px;}
+  #keyInput{width:100%;box-sizing:border-box;background:#0a0520;border:1px solid var(--ui2);
+    color:var(--ui2);font-family:inherit;font-size:12px;padding:6px 8px;letter-spacing:1px;outline:none;}
+  #keyMsg{font-size:10px;min-height:15px;line-height:1.5;text-transform:none;letter-spacing:.5px;}
+  #readmeWin{position:fixed;inset:0;z-index:23;display:none;align-items:center;justify-content:center;
     background:rgba(2,0,14,0.88);pointer-events:auto;}
   #readmeWin.open{display:flex;}
   #readmePanel{width:min(720px,88vw);max-height:82vh;display:flex;flex-direction:column;
@@ -93,6 +111,16 @@
     <div class="note">Stored only in this browser's localStorage; sent only to the key's own provider
       (api.anthropic.com or api.openai.com). Anyone with access to this browser profile can read it — use a key you can revoke.</div></div>
   <div class="row"><button id="readmeBtn">📖 README</button> <button id="setClose">✕ CLOSE</button></div>
+</div></div>
+<div id="keyWin"><div id="keyPanel">
+  <h2>✦ AI DIRECTOR — API KEY</h2>
+  <div id="keyIntro"></div>
+  <div class="row"><input type="password" id="keyInput" placeholder="sk-ant-… (Claude) or sk-… (GPT)" autocomplete="off" spellcheck="false"></div>
+  <div id="keyMsg"></div>
+  <div class="row"><button id="keySave">✔ SAVE &amp; TEST</button><button id="keyRemove" style="display:none">✕ REMOVE KEY</button><button id="keyCancel">CLOSE</button></div>
+  <div class="note">Get a key at console.anthropic.com (Claude) or platform.openai.com (GPT).
+    Stored only in this browser's localStorage; sent only to that key's own provider.
+    Anyone with access to this browser profile can read it — use a key you can revoke.</div>
 </div></div>
 <div id="readmeWin"><div id="readmePanel">
   <button id="readmeClose">✕ CLOSE</button>
@@ -992,30 +1020,134 @@ const AID={
     const kb=document.getElementById('keyBtn');
     if(kb)kb.textContent=this.key?'⚿ CHANGE / REMOVE KEY':'⚿ SET KEY';
   },
+  /* true when the host environment gives us a model with no key —
+     Claude's artifact runtime, or any host exposing window.aiComplete */
+  hostAI(){
+    return (typeof window!=='undefined')&&
+      ((window.claude&&typeof window.claude.complete==='function')||
+       typeof window.aiComplete==='function');
+  },
   toggle(){
     this.on=!this.on;
     this.status=this.on?'ON':'OFF';
     this.fails=0; /* fresh chances on every toggle */
+    try{localStorage.setItem('neonInfinityAiPref',this.on?'1':'0');}catch(e){}
     if(!this.on){world.aiBias=null;world.aiLook=null;world.lootMul=1;
       this.taunts=[];MUS.directive=null;cv.style.filter='';}
     else if(state==='play')this.request(wave+1);
     this.label();
-    if(this.on)announceNow('','✦ AI DIRECTOR — '+(this.key
-      ?'live via your api key':'live inside claude · or add a key in ⚙ settings')+' ✦',0);
+    if(this.on){
+      if(!this.key&&!this.hostAI()){
+        /* no model reachable here: be honest about SEED and offer the fix */
+        this.status='SEED';this.label();
+        this.openKeyModal('seed');
+      }else announceNow('','✦ AI DIRECTOR — '+(this.hostAI()
+        ?'live inside claude':'live via your api key')+' ✦',0);
+    }
   },
-  askKey(){
-    const k=prompt(this.key
-      ?'An API key is saved in this browser. Paste a new key to replace it, or leave empty and press OK to remove it.'
-      :'Paste an Anthropic key (sk-ant-…) for Claude, or an OpenAI key (sk-…) for GPT.\n\nIt is stored only in this browser\'s localStorage and sent only to that provider\'s API. Anyone with access to this browser profile can read it — use a key you can revoke.','');
-    if(k===null)return;
-    const t=k.trim();
+  /* auto-enable on load: default ON inside Claude (or any aiComplete
+     host); elsewhere restore the player's saved preference if a key is
+     present. An explicit OFF from a previous session always wins. */
+  autoEnable(){
+    if(this.on)return;
+    let pref=null;try{pref=localStorage.getItem('neonInfinityAiPref');}catch(e){}
+    if(pref==='0')return;
+    if(this.hostAI()||(pref==='1'&&this.key)){
+      this.on=true;this.status='ON';this.fails=0;this.label();
+      announceNow('','✦ AI DIRECTOR — '+(this.hostAI()
+        ?'live inside claude':'live via your api key')+' ✦',0);
+    }
+  },
+  /* ---------- key modal ---------- */
+  openKeyModal(ctx){
+    const intro=document.getElementById('keyIntro');
+    intro.textContent=ctx==='seed'
+      ?'You are not inside Claude, so the Director has no free line to a model — the ✦AI SEED chip means the game is running on its built-in seeded generators, not a live AI. Paste an API key below to put a real model in the Director\'s chair, or close this and enjoy the seeded game.'
+      :'Paste an Anthropic key (sk-ant-…) to make Claude the Director, or an OpenAI key (sk-…) for GPT. The key prefix picks the provider automatically.';
+    const inp=document.getElementById('keyInput');
+    inp.value=this.key||'';
+    document.getElementById('keyMsg').textContent=this.key?'a key is saved in this browser':'';
+    document.getElementById('keyMsg').style.color='';
+    document.getElementById('keyRemove').style.display=this.key?'':'none';
+    document.getElementById('keySave').disabled=false;
+    document.getElementById('keyWin').classList.add('open');
+    paused=true;
+    setTimeout(()=>inp.focus(),50);
+  },
+  closeKeyModal(){
+    document.getElementById('keyWin').classList.remove('open');
+    paused=false;
+  },
+  askKey(){this.openKeyModal('settings');},
+  /* one cheap real request against the key's provider — returns null if
+     the key works, or the provider's error message if it doesn't */
+  async verifyKey(k){
     try{
-      if(t){localStorage.setItem('neonInfinityApiKey',t);this.key=t;this.fails=0;
-        announceNow('','⚿ api key saved — the director now runs anywhere',150);}
-      else{localStorage.removeItem('neonInfinityApiKey');this.key=null;
-        announceNow('','⚿ api key removed',330);}
-    }catch(e){announceNow('','⚿ localStorage unavailable — key not saved',330);}
+      let res;
+      if(k.startsWith('sk-')&&!k.startsWith('sk-ant-')){
+        res=await fetch('https://api.openai.com/v1/chat/completions',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
+          body:JSON.stringify({model:'gpt-5-mini',max_completion_tokens:16,
+            messages:[{role:'user',content:'ping'}]}),
+          signal:AbortSignal.timeout(10000)});
+      }else{
+        res=await fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-api-key':k,
+            'anthropic-version':'2023-06-01',
+            'anthropic-dangerous-direct-browser-access':'true'},
+          body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1,
+            messages:[{role:'user',content:'ping'}]}),
+          signal:AbortSignal.timeout(10000)});
+      }
+      if(res.ok)return null;
+      let msg='HTTP '+res.status;
+      try{const j=await res.json();
+        if(j&&j.error&&j.error.message)msg+=' — '+String(j.error.message).slice(0,140);}catch(_){}
+      return msg;
+    }catch(e){return String(e.message||e);}
+  },
+  async saveKeyFromModal(){
+    const inp=document.getElementById('keyInput');
+    const msg=document.getElementById('keyMsg');
+    const btn=document.getElementById('keySave');
+    const t=inp.value.trim();
+    if(!t){msg.style.color='#f7a';msg.textContent='paste a key first (or CLOSE to play seeded)';return;}
+    if(!t.startsWith('sk-')){msg.style.color='#f7a';
+      msg.textContent='that does not look like an API key — expected sk-ant-… (Anthropic) or sk-… (OpenAI)';return;}
+    btn.disabled=true;msg.style.color='';
+    msg.textContent='testing key against '+(t.startsWith('sk-ant-')?'api.anthropic.com':'api.openai.com')+' …';
+    const err=await this.verifyKey(t);
+    btn.disabled=false;
+    if(err){
+      msg.style.color='#f7a';
+      msg.textContent='✗ key test failed: '+err;
+      return; /* not saved — a saved-but-dead key would just lie later */
+    }
+    try{localStorage.setItem('neonInfinityApiKey',t);}
+    catch(e){msg.style.color='#f7a';msg.textContent='✗ key works but localStorage is unavailable — it cannot be saved in this browser';return;}
+    this.key=t;this.fails=0;
+    msg.style.color='#7fa';
+    msg.textContent='✓ key verified — '+(t.startsWith('sk-ant-')?'Claude':'GPT')+' is the Director';
     this.label();
+    announceNow('','⚿ api key verified — '+(t.startsWith('sk-ant-')?'claude':'gpt')+' is directing ✦',150);
+    setTimeout(()=>{
+      this.closeKeyModal();
+      if(!this.on)this.toggle();
+      else{this.status='ON';this.label();if(state==='play')this.request(wave+1);}
+    },900);
+  },
+  removeKeyFromModal(){
+    try{localStorage.removeItem('neonInfinityApiKey');}catch(e){}
+    this.key=null;this.fails=0;
+    document.getElementById('keyInput').value='';
+    const msg=document.getElementById('keyMsg');
+    msg.style.color='';msg.textContent='key removed';
+    document.getElementById('keyRemove').style.display='none';
+    if(this.on&&!this.hostAI()){this.status='SEED';}
+    this.label();
+    announceNow('','⚿ api key removed',330);
   },
   resetRun(){
     this.packets={};this.relicQueue=[];this.bossPlan=null;this.taunts=[];
@@ -1128,7 +1260,14 @@ const AID={
     if(this.key){
       /* a keyed setup is supposed to work — escalate visibly */
       console.error('AI Director request failed:',e);
-      if(this.fails<=2)announceNow('','✦ ai director error: '+String(e.message||e).slice(0,90)+' ✦',330);
+      const m=String(e.message||e);
+      if(/HTTP 40[13]/.test(m)){
+        /* auth failure: the key itself is dead — say so immediately */
+        this.status='ERR';this.label();
+        announceNow('','✦ api key rejected by provider — fix or replace it in ⚙ settings ✦',330);
+        return;
+      }
+      if(this.fails<=2)announceNow('','✦ ai director error: '+m.slice(0,90)+' ✦',330);
       if(this.fails>=3){this.status='ERR';this.label();}
     }else{
       /* keyless outside Claude is the expected seeded mode, not an error */
@@ -1197,7 +1336,22 @@ const AID={
 AID.loadKey();
 document.getElementById('aiBtn').addEventListener('click',()=>AID.toggle());
 document.getElementById('keyBtn').addEventListener('click',()=>AID.askKey());
+document.getElementById('keySave').addEventListener('click',()=>AID.saveKeyFromModal());
+document.getElementById('keyRemove').addEventListener('click',()=>AID.removeKeyFromModal());
+document.getElementById('keyCancel').addEventListener('click',()=>AID.closeKeyModal());
+document.getElementById('keyWin').addEventListener('click',e=>{
+  if(e.target.id==='keyWin')AID.closeKeyModal();});
+document.getElementById('keyInput').addEventListener('keydown',e=>{
+  e.stopPropagation(); /* keep game hotkeys out of the key field */
+  if(e.key==='Enter')AID.saveKeyFromModal();
+  if(e.key==='Escape')AID.closeKeyModal();
+});
 AID.label();
+/* default the Director ON inside Claude (announceNow and the host hook
+   may not exist yet at this point in the script, so defer; re-check at
+   1.5s in case the artifact runtime injects window.claude late) */
+setTimeout(()=>AID.autoEnable(),0);
+setTimeout(()=>AID.autoEnable(),1500);
 
 /* ---------- Airlock self-test (type "aidtest" in game) ---------- */
 function aidSelfTest(){
@@ -3059,6 +3213,7 @@ addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     const rw=document.getElementById('readmeWin');
     if(rw.classList.contains('open'))rw.classList.remove('open');
+    else if(document.getElementById('keyWin').classList.contains('open'))AID.closeKeyModal();
     else if(document.getElementById('settings').classList.contains('open'))closeSettings();
   }
   if(state==='title'&&(e.key==='Enter'||e.key===' '))startGame();
