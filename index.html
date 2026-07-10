@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#03010a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>NEON ∞ v4 — Infinite Generative Galaga</title>
 <style>
   :root{--ui:#7ef9ff;--ui2:#b98aff;--uiPink:#ff7de9;}
@@ -94,7 +100,7 @@
 <div id="hudTR" class="hud">WAVE <span id="wave">1</span><br><span id="lives" style="color:var(--uiPink)"></span></div>
 <div id="fxList"></div>
 <div id="seedBox"><span id="uniName"></span><br>UNIVERSE <span id="seedTxt"></span><br>
-  <button id="reseed">⟲ NEW UNIVERSE</button> <button id="resetBtn">↻ RESTART</button>
+  <button id="reseed">⟲ NEW UNIVERSE</button> <button id="dailyBtn">☀ DAILY</button> <button id="shareBtn">⇪ SHARE</button> <button id="resetBtn">↻ RESTART</button>
   <div id="soundRow"><button id="aiBtn">✦AI OFF</button><button id="musBtn">♪ OFF</button><button id="muteBtn">🔊</button><input type="range" id="vol" min="0" max="100" value="60"><button id="setBtn">⚙</button></div>
 </div>
 <div id="settings"><div id="setPanel">
@@ -198,7 +204,23 @@ function waveCodename(){
 /* ============================================================
    UNIVERSE AESTHETIC GENOME (grid removed → comets)
    ============================================================ */
-let universeSeed=(Math.random()*0xffffffff)>>>0;
+/* the daily universe: everyone on Earth gets the same seed today */
+function dailySeed(){
+  const d=new Date();
+  const key=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
+  return (mulberry32(key^0x00DA117)()*0xffffffff)>>>0;
+}
+let dailyMode=false;
+/* ?u=SEED loads a shared universe · ?u=daily (or ?daily) loads today's */
+let universeSeed=(()=>{
+  try{
+    const q=new URLSearchParams(location.search);
+    if(q.get('u')==='daily'||q.has('daily')){dailyMode=true;return dailySeed();}
+    const u=q.get('u');
+    if(u){const v=parseInt(u,36);if(Number.isFinite(v)&&v>0)return v>>>0;}
+  }catch(e){}
+  return (Math.random()*0xffffffff)>>>0;
+})();
 let uRng=mulberry32(universeSeed);
 let USTYLE=null;
 function universeStyle(seed){
@@ -227,7 +249,10 @@ function universeStyle(seed){
 function applyUniverse(){
   USTYLE=universeStyle(universeSeed);
   document.getElementById('seedTxt').textContent=universeSeed.toString(36).toUpperCase();
-  document.getElementById('uniName').textContent='◈ '+USTYLE.name+' ◈';
+  document.getElementById('uniName').textContent='◈ '+USTYLE.name+(dailyMode?' · ☀ DAILY':'')+' ◈';
+  /* keep the address bar shareable: the URL always encodes this universe */
+  try{history.replaceState(null,'',location.pathname+(dailyMode?'?u=daily':'?u='+universeSeed.toString(36)));}
+  catch(e){/* file:// forbids replaceState with a query — the SHARE button still works */}
   const rs=document.documentElement.style;
   rs.setProperty('--ui',`hsl(${USTYLE.uiHue} 100% 72%)`);
   rs.setProperty('--ui2',`hsl(${(USTYLE.uiHue+70)%360} 90% 70%)`);
@@ -878,6 +903,15 @@ const AIR={
     }
     return sp;
   },
+  nemesis(n){
+    if(!n||typeof n!=='object')return null;
+    const taunts=Array.isArray(n.taunts)
+      ?n.taunts.slice(0,3).map(t=>this.str(t,50)).filter(Boolean):[];
+    const name=this.str(n.name,26);
+    if(!name&&!taunts.length)return null;
+    return{name:name.toUpperCase(),entrance:this.str(n.entrance,70),
+      escape:this.str(n.escape,70),taunts};
+  },
   boss(b){
     if(!b||typeof b!=='object')return null;
     const script=[];
@@ -965,6 +999,10 @@ const AIR={
     if(raw.setPiece){
       const sp=this.setPiece(raw.setPiece);
       if(sp)pkt.setPiece=sp;else errs.push('setPiece rejected');
+    }
+    if(raw.nemesis){
+      const nm=this.nemesis(raw.nemesis);
+      if(nm)pkt.nemesis=nm;else errs.push('nemesis rejected');
     }
     if(forBoss&&raw.boss){
       const b=this.boss(raw.boss);
@@ -1172,6 +1210,9 @@ const AID={
         ordnance:player.ord.map(o=>o.label),
         effects:player.effects.map(e=>e.label)},
       accuracyPct:acc,
+      nemesis:NEM.name
+        ?{name:NEM.name,grudge:NEM.grudge,acesDefeated:NEM.defeated}
+        :'none yet — you may introduce one via the nemesis field',
       recentEvents:this.events.slice(-12).map(e=>'w'+e.w+': '+e.s),
       yourMemory:this.mem};
   },
@@ -1188,7 +1229,8 @@ const AID={
 "aesthetic":{"hueShift":-60..60,"bulletShape":"orb|shard|ring","glowAdd":0-10},
 "music":{"title":"<=40 chars — name the track and its genre, shown to the player","rootShift":-5..5,"tempoBias":-12..12,"swing":0-0.2,"prog":[exactly 4 chord scale-degrees 0-6, first MUST be 0],"bass16":[exactly 16 slots: null=rest or scale degree -1..7],"mel":[exactly 32 slots: null or degree -2..9 — a genuinely catchy lead hook with AABA phrasing and breathing rests],"arp":[exactly 8 ints -1..5],"kick":[16 ints 0/1],"hat":[16 ints 0/1],"snare":[16 ints 0/1]} — PICK A GENRE (house, deep house, acid techno, funk, electro breaks, synthwave, arcade/game music, drum-n-bass feel) and compose in the spirit of the most beloved tracks of that genre that you know: their groove DNA, offbeat bass pumps, acid runs, funk pockets, chip arpeggios — but always VARIED so it is never a direct copy of any real track. Make it groovy above all,
 "pacing":{"lootMul":0.6-1.6 — starve a coasting player, feed a struggling one},
-"spawn":{"ufo":bool | "harbinger":bool | "minefield":"${AI_ENUMS.minefield.join('|')}"} — summon AT MOST one special guest this wave: a hunting UFO, a powerup-purging null harbinger, or a patterned minefield. Use sparingly, for dramatic beats`;
+"spawn":{"ufo":bool | "harbinger":bool | "minefield":"${AI_ENUMS.minefield.join('|')}"} — summon AT MOST one special guest this wave: a hunting UFO, a powerup-purging null harbinger, or a patterned minefield. Use sparingly, for dramatic beats,
+"nemesis":{"name":"<=26 chars callsign, e.g. VOID DUCHESS KRA-7","entrance":"<=70 chars said on arrival","escape":"<=70 chars said when fleeing at low hull","taunts":["<=50 chars each, up to 3, said mid-duel"]} — a recurring rival ace pilot duels this player across waves (see nemesis in run state: name them ONCE and keep the name, deepen the grudge each rematch using yourMemory/recentEvents)`;
     if(spOK&&!isBoss)spec+=`,
 "setPiece":one of {"type":"pacifist","text":"<=90 chars in-fiction reason not to shoot marked ships"} | {"type":"killOrder","order":[permutation of 0,1,2],"riddle":"<=110 chars whose answer encodes the order (families are glyphs α=0 β=1 γ=2)"} | {"type":"convoy","text":"<=90 chars"} | {"type":"heist","text":"<=90 chars"}`;
     if(spOK&&isBoss)spec+=`,
@@ -1397,6 +1439,11 @@ function aidSelfTest(){
   ok('spawn limited to one special',
     v.pkt.spawn.ufo===true&&!v.pkt.spawn.harbinger&&!v.pkt.spawn.minefield);
   ok('orbs verb clamped',v.pkt.boss.script[0].n<=3);
+  /* nemesis strings clamp; over-long names and extra taunts are cut */
+  const vn=AIR.validate({codename:'x',taunt:'x',
+    nemesis:{name:'X'.repeat(99),entrance:'E'.repeat(999),taunts:['a','b','c','d','e']}},false);
+  ok('nemesis clamped',vn.pkt.nemesis.name.length===26
+    &&vn.pkt.nemesis.entrance.length===70&&vn.pkt.nemesis.taunts.length===3);
   /* garbage input fails loudly, not silently */
   v=AIR.validate('not json at all',false);
   ok('garbage rejected with error',v.pkt===null&&v.errs.length>0);
@@ -1678,9 +1725,50 @@ function eshoot(o){
   if(time<(world.enemyJamUntil||0))return; /* WEAPON JAM EMP */
   if(ebullets.length>=70)return;
   o.bhp=o.bhp||1;
+  o.bhp0=o.bhp; /* original toughness — sets the shoot-down bounty */
   /* AI wave styling may recolor ordinary enemy fire (bolts keep theirs) */
   if(world.aiBias&&world.aiBias.bulletHue!=null&&!o.bolt)o.h=world.aiBias.bulletHue;
   ebullets.push(o);
+}
+/* bounty for shooting down enemy ordnance — sturdier rounds pay more
+   (3 pts per hit of toughness, × your multiplier; big orbs get a popup) */
+function bulletBounty(eb){
+  const v=Math.round(3*(eb.bhp0||1)*player.mult);
+  score+=v;
+  if((eb.bhp0||1)>=3)popText(eb.x,eb.y,'+'+v,eb.h);
+}
+/* ---------- graze: shave past bullets without getting hit ----------
+   Each enemy round that passes inside the graze ring (without hitting)
+   sparks, pays a little score, and charges the gold meter around your
+   ship; a full meter fires GRAZE SURGE: +1 score multiplier for 12s. */
+function addGraze(b){
+  player.graze=Math.min(100,(player.graze||0)+7);
+  score+=Math.round(5*player.mult);
+  burst((player.x+b.x)/2,(player.y+b.y)/2,3,48);
+  if(player.graze>=100){
+    player.graze=0;
+    player.mult+=1;
+    addEffect('GRAZE SURGE',12,true,()=>player.mult=Math.max(1,player.mult-1));
+    announceNow('','▲ GRAZE SURGE — score ×'+player.mult+' for living dangerously',48);
+    SND.gold();
+  }
+}
+/* ---------- dash: a short invulnerable blink on a 4s cooldown ----------
+   SHIFT / X on keyboard (dashes along your current stick direction),
+   double-tap on touch or double-click in pointer modes (dashes toward
+   the tap). The inner ring around the ship refills as it recharges. */
+function tryDash(dx,dy){
+  if(state!=='play'||time<player.dashCd)return;
+  if(!dx&&!dy){dx=player.lastDx;dy=player.lastDy;}
+  const m=Math.hypot(dx,dy)||1;dx/=m;dy/=m;
+  player.dashCd=time+4;
+  player.dashUntil=time+0.13;player.dashDx=dx;player.dashDy=dy;
+  player.invulnUntil=Math.max(player.invulnUntil,time+0.35);
+  SND.zap();
+  for(let i=0;i<12;i++)parts.push({x:player.x-dx*i*5,y:player.y-dy*i*5,
+    vx:-dx*rr(Math.random,60,160)+rr(Math.random,-30,30),
+    vy:-dy*rr(Math.random,60,160)+rr(Math.random,-30,30),
+    life:0.35,max:0.35,h:player.gen.hue2,sz:2});
 }
 
 let stars=[];
@@ -1965,6 +2053,8 @@ function resetPlayer(full){
   /* stream floor survives respawn — veterancy is permanent */
   player.shots=Math.max(1,Math.min(4,1+(wave/7|0)));
   player.effects=[];player.fireT=0;player.invulnUntil=time+2.5;player.droneT=0;
+  player.graze=0;player.dashCd=0;player.dashUntil=0;player.dashDx=0;player.dashDy=-1;
+  player.lastDx=0;player.lastDy=-1;
   if(full){player.lives=3;player.dmgPerm=0;player.durMul=1;player.energyMax=130;
     player.armor=0;player.shieldCeil=300;player.upgradeLvl=0;player.sizePerm=0;
     /* challenge-round boons: additive, decay slowly across waves */
@@ -2421,7 +2511,7 @@ function boom(x,y,R,dmg){
     if(boss&&(boss.x-x)**2+(boss.y-y)**2<(R+boss.r)**2)damageBoss(dmg*2);
   }
   for(let i=ebullets.length-1;i>=0;i--){const b=ebullets[i];
-    if((b.x-x)**2+(b.y-y)**2<R*R)ebullets.splice(i,1);}
+    if((b.x-x)**2+(b.y-y)**2<R*R){bulletBounty(b);ebullets.splice(i,1);}}
   for(let i=emis.length-1;i>=0;i--){const b=emis[i];
     if((b.x-x)**2+(b.y-y)**2<R*R){burst(b.x,b.y,6,b.h);emis.splice(i,1);}}
 }
@@ -2780,6 +2870,21 @@ function killEnemy(e,silentDrops){
     AID.logEvent('killed a null harbinger before detonation');
     return;
   }
+  if(e.nem){
+    const v=Math.round((1200+wave*120+NEM.grudge*600)*player.mult);score+=v;
+    popText(e.x,e.y,'⚔ +'+v,48);
+    burst(e.x,e.y,50,330);shockwaves.push({x:e.x,y:e.y,h:330,t0:time});
+    world.shake=Math.max(world.shake,10);SND.big();SND.fanfare();
+    announceFront('⚔ NEMESIS DOWN','"'+NEM.name+'" will not be returning. the academy will send another.',48);
+    spawnDrop(e.x,e.y,'cache');
+    if(Math.random()<0.6)spawnDrop(e.x,Math.max(60,e.y-20),'prize');
+    AID.logEvent('the player KILLED nemesis '+NEM.name+' (grudge was '+NEM.grudge+')');
+    NEM.defeated++;NEM.grudge=0;NEM.name=null;NEM.taunts=[];
+    NEM.entrance=null;NEM.escapeLine=null;
+    NEM.seed=(Math.random()*1e9)|0;
+    NEM.nextWave=wave+5+((Math.random()*4)|0);
+    return;
+  }
   if(e.ufo){
     const v=Math.round((800+wave*100)*player.mult);score+=v;
     popText(e.x,e.y,'⌬ +'+v,285);
@@ -2822,8 +2927,12 @@ function killEnemy(e,silentDrops){
     return;
   }
   const base=(e.elite?260:e.mini?40:100)+wave*8;
-  const v=Math.round(base*player.mult);score+=v;
-  popText(e.x,e.y,'+'+v,e.gen.hue);
+  /* knife-fight bounty: killing a ship in your face pays double — the
+     same ~150px range that already speeds up your guns */
+  const pd=Math.hypot(e.x-player.x,e.y-player.y);
+  const closeMul=pd<80?2:pd<160?1.5:1;
+  const v=Math.round(base*player.mult*closeMul);score+=v;
+  popText(e.x,e.y,'+'+v+(closeMul>1?' ×'+closeMul:''),closeMul>1?48:e.gen.hue);
   burst(e.x,e.y,e.elite?30:16,e.gen.hue);
   world.shake=Math.max(world.shake,e.elite?7:3);
   SND.kill();
@@ -3054,6 +3163,59 @@ function spawnNullHarbinger(){
   AID.logEvent('a null harbinger appeared');
 }
 
+/* ---------- nemesis: a rival ace with a grudge ----------
+   Appears from wave ~4, duels you personally, and warps out at 25%
+   hull unless you finish it inside the escape window. Every escape
+   deepens the grudge: it returns waves later, tougher and meaner.
+   With the AI Director live, the model names the ace, writes its
+   lines, and carries the feud in its persistent memory. */
+const NEM={
+  nextWave:0,grudge:0,name:null,taunts:[],entrance:null,escapeLine:null,
+  seed:0,defeated:0,
+  reset(){this.nextWave=4+((Math.random()*3)|0);this.grudge=0;this.name=null;
+    this.taunts=[];this.entrance=null;this.escapeLine=null;
+    this.seed=(Math.random()*1e9)|0;this.defeated=0;},
+  genName(){
+    const r=mulberry32(this.seed);
+    return pick(r,['VOID','ZERO','HEX','NULL','RAZOR','STATIC','GAMMA','WRAITH','CINDER','SABLE'])
+      +' '+pick(r,['ACE','DUCHESS','BARON','WARDEN','PRIME','REAPER','VULTURE'])
+      +' '+(1+((r()*98)|0));
+  },
+};
+NEM.reset();
+function spawnNemesis(){
+  if(!NEM.name)NEM.name=NEM.genName();
+  const r=mulberry32((NEM.seed^wave*2654435761)>>>0);
+  const e={gen:shipGenome(NEM.seed,'enemy'),beh:behaviorGenome((r()*1e9)|0),behSeed:(r()*1e9)|0,
+    x:r()<0.5?-60:W+60,y:rr(r,90,H*0.35),state:'nem',nem:true,guest:true,
+    /* like the UFO, hull scales to your real damage — always a duel,
+       never a speed bump; each grudge level adds ~4 solid hits */
+    hp:dmgNow()*(14+4*NEM.grudge),r:16,elite:true,mini:false,famIdx:null,protected:false,
+    fireT:time+2,phase:r()*TAU,dead:false,lz:null,spiralA:0,shieldHp:0,teleT:1e9,
+    goldRun:0,slotX:0,slotY:0,t0:time,entryDur:1,path:null,dvx:0,dsx:0,dsy:0,diveStart:time,
+    orbA:r()*TAU,orbDir:r()<0.5?1:-1,nemTauntT:time+4,warpAt:0};
+  e.hpMax=e.hp;
+  enemies.push(e);
+  NEM.nextWave=1e9; /* engaged — rescheduled on escape or death */
+  announceFront('⚔ '+NEM.name+(NEM.grudge>0?' RETURNS':''),
+    NEM.entrance?'"'+NEM.entrance+'"'
+      :(NEM.grudge===0?'a rival ace has marked you personally'
+        :'duel #'+(NEM.grudge+1)+' — the grudge has only grown'),330);
+  SND.alarm();
+  AID.logEvent(NEM.grudge===0
+    ?('a rival ace "'+NEM.name+'" challenged the player')
+    :('nemesis '+NEM.name+' returned for duel #'+(NEM.grudge+1)));
+}
+function nemEscape(e,betweenWaves){
+  e.dead=true;
+  burst(e.x,e.y,26,300);SND.zap();
+  NEM.grudge++;
+  NEM.nextWave=wave+2+((Math.random()*3)|0);
+  announceNow('','⚔ '+NEM.name+': '+(NEM.escapeLine?'"'+NEM.escapeLine+'"':'"this isn\'t over."')
+    +(betweenWaves?'':' — it will be back'),330);
+  AID.logEvent('nemesis '+NEM.name+' escaped the duel (grudge now '+NEM.grudge+')');
+}
+
 /* ---------- wave director ---------- */
 function launchBoss(){
   spawnBoss();
@@ -3083,6 +3245,16 @@ function startWave(){
   /* consume this wave's AI packet, then prefetch the next one (§3.1) */
   const pkt=AID.consume(wave);
   AID.request(wave+1);
+  /* a live nemesis disengages when the next wave arrives (grudge grows) */
+  for(const e of enemies)if(e.nem&&!e.dead)nemEscape(e,true);
+  /* AI-authored nemesis flavor: the model names the ace and writes its
+     lines; the encounter schedule itself stays engine-controlled */
+  if(pkt&&pkt.nemesis){
+    if(!NEM.name&&pkt.nemesis.name)NEM.name=pkt.nemesis.name;
+    if(pkt.nemesis.taunts.length)NEM.taunts=pkt.nemesis.taunts;
+    if(pkt.nemesis.entrance)NEM.entrance=pkt.nemesis.entrance;
+    if(pkt.nemesis.escape)NEM.escapeLine=pkt.nemesis.escape;
+  }
   if(wave%5===0){
     if(pkt&&(pkt.codename||pkt.taunt))announceNow(pkt.codename,pkt.taunt,0);
     if(pkt&&pkt.faction&&pkt.faction.lore)announceNow('',pkt.faction.lore,330);
@@ -3131,6 +3303,8 @@ function startWave(){
     world.flash=Math.max(world.flash,0.5);
     SND.fanfare();SND.alarm();AID.logEvent('challenge round began');
   }
+  /* the rival ace picks ordinary waves for its duels */
+  if(!challengeWave&&wave>=NEM.nextWave)spawnNemesis();
   const cols=challengeWave?12:Math.min(12,5+(wave/2|0)),
         rows=challengeWave?Math.min(5,3+(wave/8|0)):Math.min(5,2+(wave/4|0));
   const gapX=Math.min(64,(W-120)/cols),gapY=50;
@@ -3445,7 +3619,7 @@ function burst(x,y,n,h){
 }
 function popText(x,y,txt,h){
   /* score pops stay snappy; text (taunts, barks) lingers to be readable */
-  const dur=txt.length>8?2.6:1.1;
+  const dur=(txt.length>8&&txt[0]!=='+')?2.6:1.1;
   pops.push({x,y,txt,h,t0:time,dur});
 }
 
@@ -3460,6 +3634,14 @@ addEventListener('keydown',e=>{
   keys[e.key]=true;
   if(e.key===' ')e.preventDefault();
   if(e.key==='p'||e.key==='P')paused=!paused;
+  if(e.key==='Shift'||e.key==='x'||e.key==='X'){
+    let dx=0,dy=0;
+    if(keys.ArrowLeft||keys.a||keys.A)dx-=1;
+    if(keys.ArrowRight||keys.d||keys.D)dx+=1;
+    if(keys.ArrowUp||keys.w||keys.W)dy-=1;
+    if(keys.ArrowDown||keys.s||keys.S)dy+=1;
+    tryDash(dx*player.invert,dy);
+  }
   if(e.key==='Escape'){
     const rw=document.getElementById('readmeWin');
     if(rw.classList.contains('open'))rw.classList.remove('open');
@@ -3487,10 +3669,16 @@ addEventListener('keydown',e=>{
   }
 });
 addEventListener('keyup',e=>keys[e.key]=false);
+let lastTapT=-9;
 cv.addEventListener('pointerdown',e=>{SND.ensure();touchMode=e.pointerType!=='mouse';
   if(e.pointerType==='mouse')mouseHeld=true;
   if(state==='title')startGame();
   else if(state==='over'&&time-gameOverAt>1)startGame();
+  else if(state==='play'){
+    /* double-tap / double-click: dash toward the tap */
+    if(time-lastTapT<0.32)tryDash(e.clientX-player.x,e.clientY-player.y);
+    lastTapT=time;
+  }
   player.tx=e.clientX;player.ty=e.clientY;});
 cv.addEventListener('pointermove',e=>{
   /* HOVER mode: pointer steers with or without pressing (pressing only
@@ -3504,9 +3692,70 @@ cv.addEventListener('pointerup',e=>{
 });
 cv.addEventListener('pointerleave',()=>{player.tx=null;player.ty=null;mouseHeld=false;});
 document.getElementById('reseed').addEventListener('click',()=>{
-  SND.ensure();
+  SND.ensure();dailyMode=false;
   universeSeed=(Math.random()*0xffffffff)>>>0;uRng=mulberry32(universeSeed);
   applyUniverse();startGame();});
+document.getElementById('dailyBtn').addEventListener('click',()=>{
+  SND.ensure();dailyMode=true;
+  universeSeed=dailySeed();uRng=mulberry32(universeSeed);
+  applyUniverse();startGame();
+  announceNow('☀ DAILY UNIVERSE','same seed for everyone today — good luck',48);});
+/* ---------- share card: a PNG of this moment + a link to this universe ---------- */
+function shareURL(){
+  const base=location.protocol.startsWith('http')
+    ?location.origin+location.pathname
+    :'https://novaspivack.github.io/neon_infinity_game/';
+  return base+(dailyMode?'?u=daily':'?u='+universeSeed.toString(36));
+}
+async function shareCard(){
+  const seedStr=universeSeed.toString(36).toUpperCase();
+  const url=shareURL();
+  const c=document.createElement('canvas');c.width=840;c.height=440;
+  const g=c.getContext('2d');
+  g.fillStyle='#03010a';g.fillRect(0,0,840,440);
+  /* backdrop: the live frame, letterboxed and dimmed */
+  const s=Math.max(840/cv.width,440/cv.height);
+  g.globalAlpha=0.45;
+  g.drawImage(cv,(840-cv.width*s)/2,(440-cv.height*s)/2,cv.width*s,cv.height*s);
+  g.globalAlpha=1;
+  const vg=g.createLinearGradient(0,0,0,440);
+  vg.addColorStop(0,'rgba(3,1,10,0.25)');vg.addColorStop(1,'rgba(3,1,10,0.85)');
+  g.fillStyle=vg;g.fillRect(0,0,840,440);
+  const ui=`hsl(${USTYLE.uiHue} 100% 72%)`;
+  g.textAlign='center';g.fillStyle=ui;g.shadowColor=ui;g.shadowBlur=18;
+  g.font='bold 64px "Courier New",monospace';g.fillText('NEON ∞',420,120);
+  g.shadowBlur=8;g.font='20px "Courier New",monospace';
+  g.fillText('◈ '+USTYLE.name+(dailyMode?' · ☀ DAILY':'')+' ◈',420,170);
+  g.fillStyle='#fff';g.shadowColor='#fff';g.shadowBlur=6;
+  g.font='bold 30px "Courier New",monospace';
+  g.fillText('WAVE '+Math.max(1,wave)+'  ·  SCORE '+score.toLocaleString(),420,260);
+  g.fillStyle=`hsl(${(USTYLE.uiHue+70)%360} 90% 70%)`;g.shadowBlur=4;
+  g.font='16px "Courier New",monospace';
+  g.fillText('UNIVERSE '+seedStr+' — play this exact universe:',420,330);
+  g.font='bold 17px "Courier New",monospace';
+  g.fillText(url,420,360);
+  g.shadowBlur=0;g.fillStyle='#889';g.font='13px "Courier New",monospace';
+  g.fillText('an infinitely generative arcade shooter by Nova Spivack',420,412);
+  try{await navigator.clipboard.writeText(url);}catch(e){}
+  c.toBlob(async blob=>{
+    const fname='neon-infinity-'+seedStr+'.png';
+    if(blob&&navigator.canShare){
+      const file=new File([blob],fname,{type:'image/png'});
+      if(navigator.canShare({files:[file]})){
+        try{
+          await navigator.share({files:[file],title:'NEON ∞',
+            text:'NEON ∞ — '+USTYLE.name+' · wave '+Math.max(1,wave)+' · '+url});
+          announceNow('','⇪ shared ✦ link: '+url,150);
+          return;
+        }catch(e){/* user cancelled the sheet — fall through to download */}
+      }
+    }
+    const a=document.createElement('a');
+    a.href=c.toDataURL('image/png');a.download=fname;a.click();
+    announceNow('','⇪ share card downloaded · universe link copied to clipboard',150);
+  },'image/png');
+}
+document.getElementById('shareBtn').addEventListener('click',()=>{SND.ensure();shareCard();});
 document.getElementById('resetBtn').addEventListener('click',()=>{
   /* restart returns to the cover screen — launch requires a click/ENTER */
   SND.ensure();
@@ -3532,6 +3781,7 @@ function startGame(){
   /* fresh run = fresh soundtrack rolls (restart re-rolls every wave's track) */
   MUS.runSalt=(Math.random()*1e9)|0;
   AID.resetRun();
+  NEM.reset();
   resetPlayer(true);
   if(AID.on)AID.request(1);
   waveClearAt=time-1.5;supplyTimer=time+8;
@@ -3586,7 +3836,7 @@ function firePrimary(rainbow,wOverride){
     for(let i=emines.length-1;i>=0;i--){const b=emines[i];
       if(col(b,6)){burst(b.x,b.y,8,330);emines.splice(i,1);}}
     for(let i=ebullets.length-1;i>=0;i--){const b=ebullets[i];
-      if(Math.abs(b.x-player.x)<9&&b.y<player.y)ebullets.splice(i,1);}
+      if(Math.abs(b.x-player.x)<9&&b.y<player.y){bulletBounty(b);ebullets.splice(i,1);}}
     for(let i=drops.length-1;i>=0;i--){const d=drops[i];
       if(Math.abs(d.x-player.x)<10&&d.y<player.y
         &&(d.x-player.x)**2+(d.y-player.y)**2>=130*130){
@@ -3732,7 +3982,7 @@ function updateLaser(dt,firing,rainbow){
            heavy orbs take a beat of sustained beam */
         const eb=ebullets[i];
         eb.bhp=(eb.bhp||1)-dt*12;
-        if(eb.bhp<=0){burst(eb.x,eb.y,3,hue);ebullets.splice(i,1);}
+        if(eb.bhp<=0){burst(eb.x,eb.y,3,hue);bulletBounty(eb);ebullets.splice(i,1);}
       }
     for(let i=emis.length-1;i>=0;i--)
       if(inColAny(emis[i],12)){burst(emis[i].x,emis[i].y,6,emis[i].h);SND.pop();emis.splice(i,1);}
@@ -4052,6 +4302,9 @@ function update(dt){
   if(keys.ArrowDown||keys.s||keys.S)dy+=1;
   player.x+=dx*sp*dt*player.invert;
   player.y+=dy*sp*dt;
+  if(dx||dy){const dm=Math.hypot(dx,dy);player.lastDx=dx/dm;player.lastDy=dy/dm;}
+  if(time<player.dashUntil){player.x+=player.dashDx*1900*dt;player.y+=player.dashDy*1900*dt;}
+  player.graze=Math.max(0,(player.graze||0)-3*dt);
   if(player.tx!=null){
     /* when inverted, ease toward the mirror of the pointer instead of
        negating the delta — negation is a runaway loop that pins the
@@ -4221,7 +4474,7 @@ function update(dt){
       const eb=ebullets[j];const rad=eb.r+b.r+1;
       if((eb.x-b.x)**2+(eb.y-b.y)**2<rad*rad){
         eb.bhp=(eb.bhp||1)-1;
-        if(eb.bhp<=0){burst(eb.x,eb.y,4,eb.h);SND.pop();ebullets.splice(j,1);score+=2;}
+        if(eb.bhp<=0){burst(eb.x,eb.y,4,eb.h);SND.pop();bulletBounty(eb);ebullets.splice(j,1);}
         else{burst(eb.x,eb.y,2,eb.h);SND.ping();}
         hit=true;break;}
     }
@@ -4441,6 +4694,48 @@ function update(dt){
         hitPlayer(e.behSeed,k==='rammer'?60:75,true);
         if(k==='rammer'&&!e.dead){e.dead=true;burst(e.x,e.y,16,e.gen.hue);}
       }
+      continue;
+    }
+    if(e.nem){
+      if(e.warpAt){
+        /* warp-out window: still killable for 1.5s while it charges */
+        if(time>=e.warpAt){nemEscape(e,false);continue;}
+      }else{
+        /* ace flying: orbits you at ~230px, weaving, always re-angling */
+        e.orbA+=e.orbDir*dt*(0.9+NEM.grudge*0.15);
+        const tx=clamp(player.x+Math.cos(e.orbA)*230,40,W-40);
+        const ty=clamp(player.y-150+Math.sin(e.orbA*1.7)*100,60,H*0.75);
+        e.x+=(tx-e.x)*Math.min(1,dt*2.2);
+        e.y+=(ty-e.y)*Math.min(1,dt*2.2);
+        if(time>e.fireT&&time>=(world.enemyJamUntil||0)){
+          const a=Math.atan2(player.y-e.y,player.x-e.x);
+          const roll=Math.random();
+          if(NEM.grudge>=2&&roll<0.3){
+            /* veteran grudge: slow homing plasma orb */
+            eshoot({x:e.x,y:e.y,vx:Math.cos(a)*130,vy:Math.sin(a)*130,r:8,h:130,
+              src:e.behSeed,homeUntil:time+1.2,turn:1.3,dmg:44,bhp:4});
+          }else if(NEM.grudge>=1&&roll<0.55){
+            for(let k=-1;k<=1;k++)
+              eshoot({x:e.x,y:e.y,vx:Math.cos(a+k*0.16)*270,vy:Math.sin(a+k*0.16)*270,
+                r:3.5,h:e.gen.hue2,src:e.behSeed,dmg:26,bhp:2});
+          }else{
+            for(let k=0;k<3;k++){const ja=a+rr(Math.random,-0.04,0.04);
+              eshoot({x:e.x,y:e.y,vx:Math.cos(ja)*(280+k*35),vy:Math.sin(ja)*(280+k*35),
+                r:3.5,h:e.gen.hue,src:e.behSeed,dmg:26,bhp:2});}
+          }
+          e.fireT=time+Math.max(0.7,1.6-NEM.grudge*0.2);
+        }
+        if(time>e.nemTauntT&&NEM.taunts.length){
+          popText(e.x,e.y-26,'"'+pick(Math.random,NEM.taunts)+'"',330);
+          e.nemTauntT=time+rr(Math.random,6,11);
+        }
+        /* at 25% hull the coward runs — unless you close the deal */
+        if(e.hp<=e.hpMax*0.25){
+          e.warpAt=time+1.5;e.fireT=1e9;
+          announceNow('','⚔ '+NEM.name+' is charging its warp drive — kill it NOW',48);
+        }
+      }
+      if(circleHitPlayer(e.x,e.y,e.r))hitPlayer(e.behSeed,75,true);
       continue;
     }
     if(e.ufo){
@@ -4749,7 +5044,12 @@ function update(dt){
     }
     if(ate){ebullets.splice(i,1);continue;}
     if(b.y>H+20||b.y<-20||b.x<-20||b.x>W+20){ebullets.splice(i,1);continue;}
-    if(circleHitPlayer(b.x,b.y,b.r)){const src=b.src,dmg=b.dmg;ebullets.splice(i,1);hitPlayer(src,dmg);}
+    if(circleHitPlayer(b.x,b.y,b.r)){const src=b.src,dmg=b.dmg;ebullets.splice(i,1);hitPlayer(src,dmg);continue;}
+    /* graze: the round passed inside the ring but didn't connect */
+    if(!b.grazed&&time>player.invulnUntil&&time>player.ghostUntil){
+      const gr=b.r+player.r*player.fatMul*0.6+15;
+      if((b.x-player.x)**2+(b.y-player.y)**2<gr*gr){b.grazed=true;addGraze(b);}
+    }
   }
 
   /* drops */
@@ -5335,6 +5635,22 @@ function render(){
     }
     drawShip(e.gen,e.x,e.y,Math.PI,e.r,time,
       (e.elite?USTYLE.glow+8:USTYLE.glow)+(world.aiLook?world.aiLook.glowAdd:0));
+    if(e.nem){
+      /* callsign + hull sliver above the ace; warp charge glows white */
+      ctx.textAlign='center';ctx.font='10px "Courier New",monospace';
+      ctx.fillStyle='hsl(330 100% 72%)';ctx.shadowColor='hsl(330 100% 60%)';ctx.shadowBlur=8;
+      ctx.fillText('⚔ '+NEM.name,e.x,e.y-e.r-14);ctx.shadowBlur=0;
+      ctx.fillStyle='#210014';ctx.fillRect(e.x-14,e.y-e.r-10,28,3);
+      ctx.fillStyle='hsl(330 100% 60%)';
+      ctx.fillRect(e.x-14,e.y-e.r-10,28*clamp(e.hp/e.hpMax,0,1),3);
+      if(e.warpAt){
+        const k=1-(e.warpAt-time)/1.5;
+        ctx.strokeStyle=`hsla(0 0% 100% / ${0.3+0.5*k})`;
+        ctx.shadowColor='#fff';ctx.shadowBlur=18*k;ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(e.x,e.y,e.r+6+Math.sin(time*18)*3,0,TAU);ctx.stroke();
+        ctx.shadowBlur=0;
+      }
+    }
     if(e.shieldHp>0){
       ctx.strokeStyle=`hsla(200 100% 70% / ${0.4+0.2*Math.sin(time*6)})`;
       ctx.shadowColor='#0cf';ctx.shadowBlur=10;ctx.lineWidth=1.5;
@@ -5456,6 +5772,20 @@ function render(){
           ctx.shadowColor=`hsl(${USTYLE.uiHue} 100% 70%)`;ctx.shadowBlur=12*frac;ctx.lineWidth=2;
           ctx.beginPath();ctx.arc(player.x,player.y,21,-Math.PI/2,-Math.PI/2+TAU*frac);ctx.stroke();
           ctx.shadowBlur=0;
+        }
+        /* graze meter: a gold arc outside the shield ring */
+        const gz=(player.graze||0)/100;
+        if(gz>0.02){
+          ctx.strokeStyle=`hsla(48 100% 65% / ${0.35+0.4*gz})`;
+          ctx.shadowColor='hsl(48 100% 60%)';ctx.shadowBlur=8*gz;ctx.lineWidth=1.6;
+          ctx.beginPath();ctx.arc(player.x,player.y,26,-Math.PI/2,-Math.PI/2+TAU*gz);ctx.stroke();
+          ctx.shadowBlur=0;
+        }
+        /* dash cooldown: a faint inner arc that refills over 4s */
+        if(time<player.dashCd){
+          const df=1-(player.dashCd-time)/4;
+          ctx.strokeStyle=`hsla(${g.hue2} 90% 70% / .4)`;ctx.lineWidth=1.3;
+          ctx.beginPath();ctx.arc(player.x,player.y,15,-Math.PI/2,-Math.PI/2+TAU*df);ctx.stroke();
         }
         /* impact ripple: the shield visibly takes the hit */
         if(player.shieldFlashT&&time<player.shieldFlashT){
@@ -5630,6 +5960,14 @@ function hud(dt){
     html+=`<div class="fxOrd">◆ ${esc(o.label)} ×${o.ammo}</div>`;
   }
   document.getElementById('fxList').innerHTML=html;
+}
+
+/* PWA: register the service worker on real (https) hosts — it makes the
+   game installable and playable offline. Skipped on file:// and localhost
+   so local development always runs the freshest code. */
+if('serviceWorker' in navigator&&location.protocol==='https:'){
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>
+    console.error('service worker registration failed:',e)));
 }
 
 let last=performance.now();

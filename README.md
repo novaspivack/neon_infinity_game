@@ -53,10 +53,13 @@ That's it. The file is fully self-contained. To iterate on the code: edit the fi
 
 **Why bother playing inside Claude?** It's the only place the ✦ AI Director works **with no API key at all** — Claude's artifact runtime gives the game a free line to the model. Everywhere else the Director needs a key (Anthropic or OpenAI) from ⚙ settings; everything else about the game is identical in a local browser.
 
+### Install as an app (PWA)
+When served over **https** (e.g. the [GitHub Pages copy](https://novaspivack.github.io/neon_infinity_game/)), the game is an installable Progressive Web App: **Add to Home Screen** on iPhone/iPad/Android, or the install icon in the address bar on desktop Chrome/Edge. It launches fullscreen with its own neon icon and **plays offline** — the service worker keeps the latest build cached (and always fetches the newest version when online).
+
 ### Porting
 - **Mac app:** wrap the file with [Tauri](https://tauri.app) or Electron — zero code changes.
-- **iPhone/iPad:** wrap with [Capacitor](https://capacitorjs.com) or a WKWebView shell — touch controls are already built in.
-- **Web:** host the single file anywhere.
+- **iPhone/iPad:** install as a PWA (above), or wrap with [Capacitor](https://capacitorjs.com) / a WKWebView shell — touch controls are already built in.
+- **Web:** host the folder anywhere (the game itself is still the single `index.html`; the manifest, service worker, and icons are optional PWA dressing).
 
 ---
 
@@ -71,6 +74,7 @@ That's it. The file is fully self-contained. To iterate on the code: edit the fi
 | **Hover** (default mode) | Ship follows the mouse/trackpad pointer, autofire always on — no pressing. **Hold click/press to cease fire** — the collection move. Powerups within close range of your ship are safe from your own fire. Instructions flash for the first 10 seconds of a run |
 | **Drag mode** (⚙ settings) | Press + drag to fly; **SPACE fires** — moving and shooting are separate. Release to **glide** on momentum |
 | **Touch** | Drag to fly with autofire (no spacebar on a phone); release to glide |
+| **SHIFT / X** | **Dash** — a short invulnerable blink along your movement direction, on a 4-second cooldown (the small inner ring around your ship refills as it recharges). On touch or mouse, **double-tap / double-click** dashes toward the tap |
 | **1 / 2 / 3** | Pick a reply during boss negotiations |
 | **⚙** (bottom-right) | Settings: difficulty (EASY ×1.3 → BRUTAL ×4.5 enemy hulls, default NORMAL), pointer control mode (default HOVER), music/SFX mix (music leads by default), AI Director API key, and the built-in README viewer |
 
@@ -121,9 +125,13 @@ The powerup pool now spans ~75 gifts and ~20 curses — including gift-class rar
 ## Tactics Worth Knowing
 
 - **Your shots destroy powerups too** — but drops take **3 hits**, so a stray bullet chips them without instantly erasing them. Rail lances and sustained laser still chew through them fast — ease off the trigger or swing in from the side to collect. Shooting a pink `−` curse on purpose is a legitimate move.
+- **Shooting down enemy fire pays.** Every enemy round you destroy is worth points — 3 per hit of its toughness, times your multiplier — so a 4-hit plasma orb is a little bounty, and clearing bullet hell with a machine gun quietly feeds your score.
+- **Kill close, score double.** Killing a regular ship within ~80px pays **×2** (×1.5 inside 160px) — the same knife-fight range that already speeds up your guns. Diving into a formation's face is now paid in points as well as fire rate.
+- **Graze for glory.** Enemy rounds that pass *just* beside your ship without hitting spark gold and charge the **graze ring** around your hull; fill it and **GRAZE SURGE** fires: +1 score multiplier for 12 seconds. The meter drains slowly, so it rewards sustained recklessness, not one lucky pass.
 - **Your shots destroy their shots — but not all in one hit.** Ordinary rounds pop with a single shot; weaving, hooked, and chasing rounds take 2; elite ships fire rounds one hit sturdier; turret and boss fire takes 2; heavy plasma orbs soak 4. **Sturdy rounds wear a bright white core ring** so you can triage at a glance. The laser grinds durability continuously (an orb dies after ~⅓s of sustained beam); the railgun and explosions still clear absolutely. A machine-gun stream chews a safe corridor through incoming fire — but watch for **hook rounds** (dive, then cut sideways at your flank) and **chaser rounds** (pursue you briefly, then give up): they don't fly straight, so a forward gun won't reliably clear them.
 - **Collisions are serious.** A weapon hit costs 28 shield energy, a mine 32 (field mines 40, gravity mines 45), a meteor 50, an enemy hull 75 — if your shields can't cover the cost, you lose the ship. **Touching a boss hull or its turrets is instant death, even through an overshield** (only spawn-invulnerability and phase-ghost frames save you). Boss shots are tiered too: light rain 20 → ring 24 → aimed 30 → slow fat plasma orbs 42.
 - **Energy is your engine.** Shield energy drains slowly on its own and is refilled by kills (+5), **⚡ energy cells** (+45), energy pickups, and downed UFOs (+25). Below 25% a **POWER LOW** banner fires, the bar flashes red, guns sputter at 60% rate, and speed sags hard (down to 0.45× when empty); a full bar overdrives the engines to 1.25×. When you're running dry, supply drops switch to mostly ⚡ cells and wrecked enemies shed them too.
+- **⚔ Your nemesis.** From around wave 4, a **rival ace pilot** marks you personally: it orbits you at knife range, strafes with aimed bursts, and wears its callsign and hull bar over its ship. At 25% hull it charges its warp drive and runs — you have **1.5 seconds to finish it** before it escapes. Every escape deepens the grudge: it returns waves later, tougher, faster, and with new tricks (spread volleys at grudge 1, homing plasma orbs at grudge 2+). Kill it for a big bounty, a cache, and a likely prize star — its academy will eventually send a replacement. With the AI Director live, the model names the ace, writes its entrance/escape lines and mid-duel taunts, and carries the feud in its persistent memory.
 - **⌬ UFOs.** Rarely (wave 3+), a humming saucer slips in and actively hunts you, closing fast and hovering just overhead. Its warble volleys chase you for a long 2.6 seconds (36 damage) and its heavy plasma orbs home too (48 damage). Its hull is scaled to your firepower — always **12–18 solid hits** no matter how stacked you are. It leaves after ~22 seconds; kill it first for a cache, a likely prize star, and +25 energy. Touching it costs 75.
 - **⚡ Bolt ships.** Some enemy families crackle with electric bolt weapons — fast jagged lightning aimed right at you (32 damage, **45 from elites**). The crackle sound is your cue.
 - **Gravity mines.** A quarter of minelayer mines hunt you: purple-haloed, drifting toward your ship and **accelerating as they close**. Shoot them early, at range, while they're slow.
@@ -152,7 +160,7 @@ It turns each wave of the game over to a live frontier model — Claude or GPT �
 
 **Wave direction.** The Director looks at your loadout and deliberately biases enemy fire modes, traits, formations, and entry patterns *against* it — and admits what it's doing in the wave banner. There's also a persistent memory field round-tripped every wave, so factions remember what you did to them and escalate accordingly.
 
-**Invented content.** The violet `✦` relics are powerups the model made up for that exact moment — name, flavor text, and stats — clamped so they can never exceed the best seeded roll, only be weirder. It can also **design entirely new primary weapons endlessly** — stream count, spread, bullet speed, size, shape, color, homing, ricochet, even the firing sound's pitch, all held to a hard DPS budget — grant any missile system, restyle a wave's enemy fire (color and speed), generate bosses (turret layouts, looping phase scripts, entrance/bark/death lines), and summon one special guest per wave like a hunting UFO or a minefield.
+**Invented content.** The violet `✦` relics are powerups the model made up for that exact moment — name, flavor text, and stats — clamped so they can never exceed the best seeded roll, only be weirder. It can also **design entirely new primary weapons endlessly** — stream count, spread, bullet speed, size, shape, color, homing, ricochet, even the firing sound's pitch, all held to a hard DPS budget — grant any missile system, restyle a wave's enemy fire (color and speed), generate bosses (turret layouts, looping phase scripts, entrance/bark/death lines), summon one special guest per wave like a hunting UFO or a minefield, and author your **nemesis** — the recurring rival ace gets its callsign, entrance and escape lines, and mid-duel taunts from the model, which tracks the feud wave over wave in its memory field.
 
 **Writing and vibes.** Wave codenames, in-combat taunts, per-wave palette shifts, bullet geometry swaps, AI-composed bass/arp/drum riffs layered over the seeded soundtrack, set pieces (pacifist pacts, kill-order riddles, boss negotiations where picking the right dialog line skips the fight), loot pacing nudged off your shield trend, and finally a death eulogy written from your run's actual event log.
 
@@ -196,7 +204,9 @@ So without it you get a fully deterministic seeded roguelike; with it, the same 
 
 ## Universes
 
-The seed (bottom-right) determines *everything*: background style (nebula / comets / aurora / void), color palette, ship morphology family, bullet geometry, star colors, UI color, the enemy factions and their names, the music, and every genome rolled during play. **⟲ NEW UNIVERSE** rerolls it. Same seed = same universe, so a good one is shareable — screenshot the code.
+The seed (bottom-right) determines *everything*: background style (nebula / comets / aurora / void), color palette, ship morphology family, bullet geometry, star colors, UI color, the enemy factions and their names, the music, and every genome rolled during play. **⟲ NEW UNIVERSE** rerolls it.
+
+**Universes are links now.** The address bar always encodes the current universe (`?u=SEED`), so sharing the exact world you're in is just copying the URL. **⇪ SHARE** goes further: it composes a PNG share card of the current moment — universe name, wave, score, and the link — copies the universe link to your clipboard, and hands the card to your device's share sheet (or downloads it). And **☀ DAILY** jumps to the **daily universe**: a seed derived from today's date, identical for every player on Earth — same waves, same drops, same music. Compare scores.
 
 The deep background is alive too: ringed gas giants, cratered rocks, and ice worlds drift by near and far, along with whole solar systems (a glowing sun with planets tracing visible orbits), spiral galaxies, star clusters, soft nebulae, shooting stars, and long-tailed comets. All of it is pure scenery — nothing back there can collide with you, drop loot, or touch the game's dice; it's pre-rendered at spawn so it costs almost nothing per frame, and it's colored from the universe's own palette.
 
@@ -235,7 +245,9 @@ The deep background is alive too: ringed gas giants, cratered rocks, and ice wor
   - **BYOK AI Director** — the AI Director runs outside Claude with your own Anthropic API key (stored in `localStorage`); keyed request failures surface an in-game error banner.
 - **v5** (this repo, in `index.html`) — **The Director update** (EPIC_001_AD1): the AI Director becomes a per-wave gameplay layer — wave packets, validation airlock, AI relics, counter-build wave direction, faction memory, generated bosses with phase scripts, live aesthetic/music direction, five set-piece templates, loot pacing, and run-specific death eulogies. Plus: **⚙ settings panel** with a four-level **difficulty** selector (enemy/boss hull ×1.3 to ×4.5, persisted), enemy and boss HP rescaled (steeper wave curve, scales with prize-star power, 25% turret gate), fire-rate/volley caps (×2.5 rate, 8 streams, 220-bullet budget), MEGA SHOT bullets decay back to base size in ~1s, the path-clearing laser array is capped at 9 seconds from any source, the effects HUD shows only the 5 newest effects, and the soundtrack is a 16-step electronica engine that mutates every wave with AI-composed drum/bass/arp overlays. Later balance/variety pass: bosses 20% quicker to kill, graded hit damage (24 weapon / 32 mine / 40 meteor / 55 enemy hull / 60 boss), new enemy **hook** and **chaser** rounds that don't fly straight, new **PHOTON LANCE** (piercing rocket) and **SWERVE ROCKET** player ordnance, and full-screen player movement. BYOK now also accepts **OpenAI keys** — an `sk-…` key runs the Director on GPT instead of Claude (same packet schema and airlock, noticeably different personality), and a generic `window.aiComplete` host hook lets any embedding environment power the Director keylessly. Director UX pass: **auto-on inside Claude** (host detection at load, explicit off is remembered), a proper **key modal** with save-time verification (one test request against the provider — dead keys are rejected with the real error message, never silently saved), and instant `ERR` + in-game banner when a saved key is rejected mid-run. Plus a **deep-space scenery layer**: drifting planets (ringed, cratered, iced), solar systems with orbiting worlds, spiral galaxies, star clusters, nebulae, shooting stars, and comet streaks — purely cosmetic, pre-rendered, zero gameplay impact.
 
-Built with vanilla HTML5 Canvas + Web Audio. Everything in one file, on purpose.
+- **v5.1** — **The arcade update**: **graze system** (shaving past bullets charges a gold ring; full ring = +1 score multiplier for 12s), **dash** (SHIFT/X or double-tap — short invulnerable blink, 4s cooldown), **bullet bounties** (points for every enemy round destroyed, scaled by its toughness), **knife-fight kill bonus** (×2 score within 80px, ×1.5 within 160px), the **⚔ nemesis** (a recurring rival ace that escapes at low hull and returns with a deeper grudge — AI-named and voiced when the Director is live), **seed links** (`?u=SEED` in the URL, always shareable), **☀ daily universe** (one date-derived seed for everyone), **⇪ share card** (PNG snapshot + link, via share sheet or download), **PWA install** (manifest + service worker + icons: fullscreen, offline-capable, home-screen installable), and the deep-space scenery layer gained its first pass the same night.
+
+Built with vanilla HTML5 Canvas + Web Audio. The game is one file, on purpose (the PWA manifest, service worker, and icons ride alongside).
 
 ---
 
@@ -244,6 +256,9 @@ Built with vanilla HTML5 Canvas + Web Audio. Everything in one file, on purpose.
 | Path | Role |
 |------|------|
 | [`index.html`](index.html) | The entire game — current build, playable as-is |
+| [`manifest.webmanifest`](manifest.webmanifest) | PWA manifest (install metadata) |
+| [`sw.js`](sw.js) | Service worker — offline play, network-first updates |
+| `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | App icons |
 | [`LICENSE`](LICENSE) | CC BY-NC 4.0 |
 
 ## GitHub Pages (optional)
