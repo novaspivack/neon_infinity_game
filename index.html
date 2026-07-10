@@ -1687,7 +1687,257 @@ let stars=[];
 function makeStars(){stars=[];const r=mulberry32(universeSeed^0xBEEF);
   const n=USTYLE?USTYLE.starCount:140;
   for(let i=0;i<n;i++)stars.push({x:r(),y:r(),z:0.25+r()*0.75,
-    h:pick(r,USTYLE?USTYLE.starHues:[200,300])+rr(r,-20,20)});}
+    h:pick(r,USTYLE?USTYLE.starHues:[200,300])+rr(r,-20,20)});
+  sceneryReset();}
+
+/* ============================================================
+   DEEP-SPACE SCENERY — pure eye candy on the far background:
+   drifting planets (ringed gas giants, cratered rocks, ice
+   worlds), whole solar systems, nebulae, spiral galaxies, star
+   clusters, plus shooting stars and comet streaks. Nothing here
+   can touch gameplay: no collisions, no loot, and its RNG is a
+   private stream so it never perturbs the game's own rolls.
+   Big objects are pre-rendered to offscreen canvases at spawn,
+   so the per-frame cost is a handful of drawImage calls.
+   ============================================================ */
+let scenery=[],scnR=null,scnNext={major:0,shoot:0,comet:0};
+function preRenderC(size,fn){const c=document.createElement('canvas');
+  c.width=c.height=Math.max(2,Math.ceil(size));
+  fn(c.getContext('2d'),c.width,c.height);return c;}
+function planetSprite(r,R,near){
+  const S=Math.ceil(R*2.9)+16;
+  const hue=(USTYLE.bgHue+rr(r,-70,110)+360)%360;
+  const kind=pick(r,near?['banded','banded','rocky','ice']:['banded','rocky','ice']);
+  const hasRing=kind==='banded'&&r()<0.55;
+  const ringTilt=rr(r,-0.5,0.5),ringSq=rr(r,0.2,0.38);
+  return preRenderC(S,(g,w,h)=>{
+    const cx=w/2,cy=h/2;
+    const ringPass=(front)=>{
+      g.save();g.translate(cx,cy);g.rotate(ringTilt);g.scale(1,ringSq);
+      for(let k=0;k<3;k++){
+        g.strokeStyle=`hsla(${(hue+30)%360} 60% ${62-k*10}% / ${0.5-k*0.13})`;
+        g.lineWidth=Math.max(1.2,R*0.07-k);
+        g.beginPath();
+        g.arc(0,0,R*(1.45+k*0.18),front?0:Math.PI,front?Math.PI:TAU);
+        g.stroke();
+      }
+      g.restore();
+    };
+    if(hasRing)ringPass(false); /* far half of the ring, behind the planet */
+    const base=g.createRadialGradient(cx-R*0.35,cy-R*0.35,R*0.1,cx,cy,R);
+    base.addColorStop(0,`hsl(${hue} 55% ${kind==='ice'?70:50}%)`);
+    base.addColorStop(1,`hsl(${(hue+30)%360} 60% ${kind==='ice'?36:20}%)`);
+    g.fillStyle=base;g.beginPath();g.arc(cx,cy,R,0,TAU);g.fill();
+    g.save();g.beginPath();g.arc(cx,cy,R,0,TAU);g.clip();
+    if(kind==='banded'){
+      const n=6+(r()*5|0);
+      for(let i=0;i<n;i++){
+        const by=cy-R+(i+0.5)/n*2*R,bh=R*2/n*rr(r,0.5,1);
+        g.fillStyle=`hsla(${(hue+rr(r,-25,25)+360)%360} 60% ${rr(r,28,66)}% / ${rr(r,0.16,0.38)})`;
+        g.fillRect(cx-R,by-bh/2,R*2,bh);
+      }
+    }else if(kind==='rocky'){
+      const n=8+(r()*10|0);
+      for(let i=0;i<n;i++){
+        const a=r()*TAU,d=r()*R*0.85,px=cx+Math.cos(a)*d,py=cy+Math.sin(a)*d,cr=rr(r,R*0.06,R*0.17);
+        g.fillStyle=`hsla(${hue} 30% ${rr(r,10,28)}% / .5)`;
+        g.beginPath();g.arc(px,py,cr,0,TAU);g.fill();
+        g.fillStyle=`hsla(${hue} 35% ${rr(r,52,68)}% / .22)`;
+        g.beginPath();g.arc(px-cr*0.25,py-cr*0.25,cr*0.5,0,TAU);g.fill();
+      }
+    }else{
+      g.fillStyle='hsla(0 0% 100% / .5)';
+      g.beginPath();g.ellipse(cx,cy-R*0.8,R*0.55,R*0.2,0,0,TAU);g.fill();
+      g.beginPath();g.ellipse(cx,cy+R*0.8,R*0.5,R*0.18,0,0,TAU);g.fill();
+      for(let i=0;i<5;i++){
+        g.fillStyle=`hsla(${hue} 40% 80% / .13)`;
+        g.fillRect(cx-R,cy-R+r()*2*R,R*2,rr(r,2,6));
+      }
+    }
+    /* night-side terminator */
+    const tg=g.createRadialGradient(cx-R*0.5,cy-R*0.4,R*0.2,cx,cy,R*1.05);
+    tg.addColorStop(0.7,'rgba(0,0,0,0)');tg.addColorStop(1,'rgba(0,0,6,0.78)');
+    g.fillStyle=tg;g.fillRect(0,0,w,h);
+    g.restore();
+    g.strokeStyle=`hsla(${hue} 90% 70% / .3)`;g.lineWidth=1.4;
+    g.shadowColor=`hsl(${hue} 90% 65%)`;g.shadowBlur=near?13:6;
+    g.beginPath();g.arc(cx,cy,R,0,TAU);g.stroke();g.shadowBlur=0;
+    if(hasRing)ringPass(true); /* near half, in front */
+  });
+}
+function nebulaSprite(r,R){
+  const h1=(USTYLE.bgHue+rr(r,-50,50)+360)%360,h2=(h1+rr(r,30,90))%360;
+  return preRenderC(R*2.4,(g,w,h)=>{
+    g.globalCompositeOperation='lighter';
+    const n=7+(r()*6|0);
+    for(let i=0;i<n;i++){
+      const a=r()*TAU,d=r()*R*0.55,bx=w/2+Math.cos(a)*d,by=h/2+Math.sin(a)*d*0.7,br=rr(r,R*0.25,R*0.6);
+      const bg=g.createRadialGradient(bx,by,0,bx,by,br);
+      bg.addColorStop(0,`hsla(${r()<0.5?h1:h2} 90% 60% / ${rr(r,0.045,0.11)})`);
+      bg.addColorStop(1,'transparent');
+      g.fillStyle=bg;g.fillRect(bx-br,by-br,br*2,br*2);
+    }
+    for(let i=0;i<14;i++){
+      g.fillStyle=`hsla(0 0% 100% / ${rr(r,0.25,0.7)})`;
+      g.fillRect(w*0.15+r()*w*0.7,h*0.15+r()*h*0.7,rr(r,0.7,1.6),rr(r,0.7,1.6));
+    }
+  });
+}
+function galaxySprite(r,R){
+  const hue=(USTYLE.bgHue+rr(r,-40,60)+360)%360;
+  const arms=2+(r()*2|0),tilt=rr(r,0.28,0.6),spin=r()*TAU,wind=rr(r,3.4,4.8);
+  return preRenderC(R*2.5,(g,w,h)=>{
+    g.translate(w/2,h/2);g.rotate(spin);g.scale(1,tilt);
+    g.globalCompositeOperation='lighter';
+    const cg=g.createRadialGradient(0,0,0,0,0,R*0.35);
+    cg.addColorStop(0,`hsla(${(hue+40)%360} 70% 85% / .85)`);
+    cg.addColorStop(1,'transparent');
+    g.fillStyle=cg;g.fillRect(-R,-R,R*2,R*2);
+    for(let i=0;i<240;i++){
+      const t=Math.sqrt(r()),arm=i%arms;
+      const a=arm*TAU/arms+t*wind+rr(r,-0.25,0.25),d=t*R;
+      const x=Math.cos(a)*d+rr(r,-R*0.05,R*0.05),y=Math.sin(a)*d+rr(r,-R*0.05,R*0.05);
+      g.fillStyle=`hsla(${(hue+rr(r,-20,40)+360)%360} 80% ${rr(r,60,85)}% / ${(1-t)*0.5+0.1})`;
+      const sz=rr(r,0.6,1.7);
+      g.fillRect(x,y,sz,sz);
+    }
+  });
+}
+function spawnSceneryMajor(onScreen){
+  const r=scnR;
+  const kind=pick(r,['planetFar','planetFar','planetNear','nebula','nebula','galaxy','system','cluster']);
+  const o={kind,major:true,t0:time,back:false,alpha:1};
+  if(kind==='planetFar'){o.R=rr(r,10,26);o.img=planetSprite(r,o.R,false);o.vy=rr(r,4,8);o.alpha=0.85;}
+  else if(kind==='planetNear'){o.R=rr(r,55,135);o.img=planetSprite(r,o.R,true);o.vy=rr(r,9,17);o.alpha=0.72;}
+  else if(kind==='nebula'){o.R=rr(r,170,330);o.img=nebulaSprite(r,o.R);o.vy=rr(r,6,11);o.back=true;}
+  else if(kind==='galaxy'){o.R=rr(r,55,125);o.img=galaxySprite(r,o.R);o.vy=rr(r,4,8);o.back=true;o.alpha=0.8;}
+  else if(kind==='system'){
+    o.R=rr(r,60,130);o.vy=rr(r,5,9);o.alpha=0.9;
+    o.sunHue=pick(r,[45,35,18,200,0]);o.sunR=rr(r,4,9);
+    const n=2+(r()*3|0);o.orbits=[];
+    for(let i=0;i<n;i++)o.orbits.push({d:o.R*(0.3+0.7*(i+1)/n),sp:rr(r,0.12,0.5)*(r()<0.5?-1:1),
+      ph:r()*TAU,sz:rr(r,1.2,3),h:(USTYLE.bgHue+rr(r,-60,100)+360)%360,sq:rr(r,0.3,0.5)});
+  }
+  else{ /* star cluster */
+    o.R=rr(r,40,90);o.vy=rr(r,4,8);o.back=true;o.pts=[];
+    const n=10+(r()*12|0);
+    for(let i=0;i<n;i++){const a=r()*TAU,d=Math.sqrt(r())*o.R;
+      o.pts.push({x:Math.cos(a)*d,y:Math.sin(a)*d,sz:rr(r,0.8,2),
+        h:pick(r,USTYLE.starHues),f:rr(r,1.5,5),ph:r()*TAU});}
+  }
+  o.x=rr(r,o.R*0.6,Math.max(o.R*0.6+1,W-o.R*0.6));
+  o.y0=onScreen?rr(r,o.R*0.4,H*0.8):-o.R-40;
+  o.vx=rr(r,-4,4);
+  scenery.push(o);
+}
+function spawnShootingStar(){
+  const r=scnR;
+  const sp=rr(r,750,1500),ang=rr(r,0.28,0.72)*Math.PI*(r()<0.5?1:-1);
+  /* angle measured from straight-down: mostly steep diagonals */
+  const vx=Math.sin(ang)*sp,vy=Math.cos(Math.abs(ang))*sp;
+  scenery.push({kind:'shoot',t0:time,dur:rr(r,0.45,1.1),
+    x0:rr(r,-100,W+100),y0:rr(r,-40,H*0.45),vx,vy,
+    len:rr(r,60,160),h:pick(r,USTYLE.starHues)});
+}
+function spawnComet(){
+  const r=scnR;
+  const fromLeft=r()<0.5;
+  const sp=rr(r,45,110);
+  scenery.push({kind:'comet',t0:time,dur:rr(r,7,15),
+    x0:fromLeft?-60:W+60,y0:rr(r,H*0.05,H*0.6),
+    vx:(fromLeft?1:-1)*sp,vy:rr(r,8,30),ay:rr(r,-2,2),
+    h:pick(r,[190,185,200,45,320]),R:rr(r,2,3.6)});
+}
+function sceneryReset(){
+  scenery=[];scnR=mulberry32((universeSeed^0x5CE9E1)>>>0);
+  scnNext={major:time+rr(scnR,10,24),shoot:time+rr(scnR,2,6),comet:time+rr(scnR,10,25)};
+  /* seed the sky so a fresh universe isn't empty */
+  spawnSceneryMajor(true);spawnSceneryMajor(true);
+}
+function updateScenery(){
+  if(time>=scnNext.shoot){spawnShootingStar();scnNext.shoot=time+rr(scnR,2.5,9);}
+  if(time>=scnNext.comet){spawnComet();scnNext.comet=time+rr(scnR,14,34);}
+  if(time>=scnNext.major){
+    if(scenery.filter(o=>o.major).length<4)spawnSceneryMajor(false);
+    scnNext.major=time+rr(scnR,16,36);
+  }
+  for(let i=scenery.length-1;i>=0;i--){
+    const o=scenery[i],T=time-o.t0;
+    if(o.kind==='shoot'){if(T>o.dur)scenery.splice(i,1);}
+    else if(o.kind==='comet'){
+      const x=o.x0+o.vx*T;
+      if(T>o.dur+3||x<-260||x>W+260)scenery.splice(i,1);
+    }else if(o.y0+o.vy*T-o.R>H+60)scenery.splice(i,1);
+  }
+}
+function drawScenery(backLayer){
+  for(const o of scenery){
+    const T=time-o.t0;
+    if(o.kind==='shoot'||o.kind==='comet'){
+      if(backLayer)continue;
+      if(o.kind==='shoot'){
+        const x=o.x0+o.vx*T,y=o.y0+o.vy*T;
+        const k=Math.min(1,T/o.dur),a=Math.sin(Math.PI*k)*0.9;
+        const m=Math.hypot(o.vx,o.vy),tx=x-o.vx/m*o.len,ty=y-o.vy/m*o.len;
+        const lg=ctx.createLinearGradient(x,y,tx,ty);
+        lg.addColorStop(0,`hsla(${o.h} 60% 92% / ${a})`);
+        lg.addColorStop(1,'transparent');
+        ctx.strokeStyle=lg;ctx.lineWidth=1.6;
+        ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(tx,ty);ctx.stroke();
+        ctx.globalAlpha=a;ctx.fillStyle='#fff';
+        ctx.fillRect(x-1,y-1,2,2);ctx.globalAlpha=1;
+      }else{
+        const a=Math.min(1,T/1.5,(o.dur+3-T)/2)*0.8;
+        if(a<=0)continue;
+        const px=t=>o.x0+o.vx*t,py=t=>o.y0+o.vy*t+o.ay*t*t;
+        const x=px(T),y=py(T);
+        for(let j=12;j>=1;j--){
+          const tt=Math.max(0,T-j*0.22),gx=px(tt),gy=py(tt),f=1-j/13;
+          ctx.globalAlpha=a*f*0.28;
+          ctx.fillStyle=`hsl(${o.h} 80% ${60+f*25}%)`;
+          ctx.beginPath();ctx.arc(gx,gy,o.R*(0.4+f*0.9),0,TAU);ctx.fill();
+        }
+        ctx.globalAlpha=a;
+        ctx.shadowColor=`hsl(${o.h} 100% 75%)`;ctx.shadowBlur=12;
+        ctx.fillStyle=`hsl(${o.h} 60% 92%)`;
+        ctx.beginPath();ctx.arc(x,y,o.R,0,TAU);ctx.fill();
+        ctx.shadowBlur=0;ctx.globalAlpha=1;
+      }
+      continue;
+    }
+    if(o.back!==backLayer)continue;
+    const x=o.x+o.vx*T,y=o.y0+o.vy*T;
+    ctx.globalAlpha=o.alpha*Math.min(1,T*0.5+0.6);
+    if(o.img)ctx.drawImage(o.img,x-o.img.width/2,y-o.img.height/2);
+    else if(o.kind==='system'){
+      ctx.save();ctx.translate(x,y);
+      const sg=ctx.createRadialGradient(0,0,0,0,0,o.sunR*4);
+      sg.addColorStop(0,`hsla(${o.sunHue} 100% 80% / .9)`);
+      sg.addColorStop(1,'transparent');
+      ctx.fillStyle=sg;ctx.fillRect(-o.sunR*4,-o.sunR*4,o.sunR*8,o.sunR*8);
+      ctx.fillStyle=`hsl(${o.sunHue} 100% 88%)`;
+      ctx.beginPath();ctx.arc(0,0,o.sunR,0,TAU);ctx.fill();
+      for(const p of o.orbits){
+        ctx.strokeStyle='hsla(0 0% 100% / .07)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.ellipse(0,0,p.d,p.d*p.sq,0,0,TAU);ctx.stroke();
+        const a=p.ph+time*p.sp;
+        ctx.fillStyle=`hsl(${p.h} 70% 65%)`;
+        ctx.beginPath();ctx.arc(Math.cos(a)*p.d,Math.sin(a)*p.d*p.sq,p.sz,0,TAU);ctx.fill();
+      }
+      ctx.restore();
+    }else if(o.kind==='cluster'){
+      ctx.save();ctx.translate(x,y);
+      for(const p of o.pts){
+        ctx.globalAlpha=o.alpha*(0.35+0.6*(0.5+0.5*Math.sin(time*p.f+p.ph)));
+        ctx.fillStyle=`hsl(${p.h} 85% 78%)`;
+        ctx.fillRect(p.x,p.y,p.sz,p.sz);
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha=1;
+  }
+  ctx.globalAlpha=1;
+}
 applyUniverse();
 
 /* ============================================================
@@ -4801,6 +5051,8 @@ function drawBackground(){
     }
     ctx.globalAlpha=1;
   }
+  updateScenery();
+  drawScenery(true); /* nebulae, galaxies, clusters — behind the starfield */
   for(const s of stars){
     const y=(s.y*H+time*40*s.z)%H;
     ctx.globalAlpha=0.3+0.7*s.z;
@@ -4808,6 +5060,7 @@ function drawBackground(){
     ctx.fillRect(s.x*W,y,s.z*2,s.z*(world.ts<1?7:2));
   }
   ctx.globalAlpha=1;
+  drawScenery(false); /* planets, systems, streaks — in front of the stars */
 }
 function render(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
