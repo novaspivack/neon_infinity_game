@@ -88,7 +88,7 @@
   <div class="row"><div class="lbl">MIX — MUSIC ♪ / WEAPONS &amp; SFX 🔫 (music sits above the guns by default)</div>
     ♪ <input type="range" id="musVolS" min="0" max="100" value="100" style="width:120px;pointer-events:auto;accent-color:var(--ui2);vertical-align:middle">
     &nbsp; 🔫 <input type="range" id="sfxVolS" min="0" max="100" value="70" style="width:120px;pointer-events:auto;accent-color:var(--ui2);vertical-align:middle"></div>
-  <div class="row"><div class="lbl">AI DIRECTOR — ANTHROPIC API KEY (for play outside Claude)</div>
+  <div class="row"><div class="lbl">AI DIRECTOR — API KEY (for play outside Claude) · Anthropic sk-ant-… → Claude · OpenAI sk-… → GPT</div>
     <button id="keyBtn">⚿ SET KEY</button> <span id="keyState" style="font-size:10px;opacity:.8"></span>
     <div class="note">Stored only in this browser's localStorage; sent only to api.anthropic.com.
       Anyone with access to this browser profile can read it — use a key you can revoke.</div></div>
@@ -984,7 +984,9 @@ const AID={
   label(){
     document.getElementById('aiBtn').textContent='✦AI '+this.status;
     const ks=document.getElementById('keyState');
-    if(ks)ks.textContent=this.key?'key saved ✓':'no key set (keyless works only inside Claude)';
+    if(ks)ks.textContent=this.key
+      ?((this.key.startsWith('sk-ant-')?'Anthropic':'OpenAI')+' key saved ✓')
+      :'no key set (keyless works only inside Claude)';
     const kb=document.getElementById('keyBtn');
     if(kb)kb.textContent=this.key?'⚿ CHANGE / REMOVE KEY':'⚿ SET KEY';
   },
@@ -1001,8 +1003,8 @@ const AID={
   },
   askKey(){
     const k=prompt(this.key
-      ?'An Anthropic API key is saved in this browser. Paste a new key to replace it, or leave empty and press OK to remove it.'
-      :'Paste your Anthropic API key (sk-ant-…).\n\nIt is stored only in this browser\'s localStorage and sent only to api.anthropic.com. Anyone with access to this browser profile can read it — use a key you can revoke.','');
+      ?'An API key is saved in this browser. Paste a new key to replace it, or leave empty and press OK to remove it.'
+      :'Paste an Anthropic key (sk-ant-…) for Claude, or an OpenAI key (sk-…) for GPT.\n\nIt is stored only in this browser\'s localStorage and sent only to that provider\'s API. Anyone with access to this browser profile can read it — use a key you can revoke.','');
     if(k===null)return;
     const t=k.trim();
     try{
@@ -1075,7 +1077,29 @@ const AID={
       const txt=await window.aiComplete(promptText);
       return String(txt).replace(/```json|```/g,'').trim();
     }
-    /* transport 3: direct Anthropic API (keyless inside Claude, BYOK anywhere) */
+    /* transport 3: direct APIs — the key prefix picks the provider.
+       sk-ant-… → Anthropic (Claude) · sk-… → OpenAI (GPT) */
+    if(this.key&&this.key.startsWith('sk-')&&!this.key.startsWith('sk-ant-')){
+      const res=await fetch('https://api.openai.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.key},
+        body:JSON.stringify({model:'gpt-5-mini',
+          /* GPT-5 family: reasoning tokens bill against this budget,
+             so give it generous headroom or replies get truncated */
+          max_completion_tokens:Math.max(8000,maxTokens),
+          messages:[{role:'user',content:promptText}]}),
+        signal:AbortSignal.timeout(12000)});
+      if(!res.ok){
+        let msg='HTTP '+res.status;
+        try{const j=await res.json();
+          if(j&&j.error&&j.error.message)msg+=' — '+String(j.error.message).slice(0,90);}catch(_){}
+        throw new Error(msg);
+      }
+      const data=await res.json();
+      return String((data.choices&&data.choices[0]&&data.choices[0].message&&
+        data.choices[0].message.content)||'').replace(/```json|```/g,'').trim();
+    }
+    /* Anthropic (keyless inside Claude, sk-ant- BYOK anywhere) */
     const headers={'Content-Type':'application/json'};
     if(this.key){
       headers['x-api-key']=this.key;
